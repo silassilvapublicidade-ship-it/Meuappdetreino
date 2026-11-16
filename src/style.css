@@ -326,3 +326,17 @@ select.inp.sm{background-position:calc(100% - 18px) 18px,calc(100% - 13px) 18px}
 .ff-b{display:flex;gap:6px;align-items:center}
 .ff-b .btn.sm{min-height:36px}
 @media (max-width:380px){.fgrid{grid-template-columns:repeat(2,1fr)}.brand .neon{font-size:54px}}
+
+/* ---------- Semana marcada e compartilhar ---------- */
+.ck{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--mint);color:#03140e;box-shadow:0 0 12px rgba(67,227,173,.45)}
+.ck svg{width:18px;height:18px}
+.day .g .ck{margin:1px auto}
+.day.done .s{color:var(--mint);font-size:10px;font-weight:800}
+.ck.big{width:34px;height:34px}
+.wcard.feito{border-color:rgba(67,227,173,.5);background:linear-gradient(90deg,rgba(67,227,173,.08),var(--panel) 60%)}
+.chip.wk{display:inline-block;margin-top:6px;font-size:11px}
+.seg.two{grid-template-columns:1fr 1fr}
+.cardprev{margin-top:12px;border-radius:16px;overflow:hidden;border:1px solid var(--line);background:#000;min-height:220px;display:grid;place-items:center}
+.cardprev img{width:100%;display:block}
+a.btn{text-decoration:none}
+a.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}

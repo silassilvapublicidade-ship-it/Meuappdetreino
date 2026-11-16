@@ -4,6 +4,7 @@ import {
   slug, prepararFicha, fichaParaSalvar, fichaDaLeitura, cronogramaPadrao, chutarAumento, copia
 } from './modelo.js';
 import * as D from './dados.js';
+import { desenharSemana, desenharMes } from './cartao.js';
 
 /* ---------- Utilidades ---------- */
 function keyOf(s){ return slug(s).replace(/-/g,'_').slice(0,40); }
@@ -37,6 +38,7 @@ const ICON = {
   mute:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>',
   doc:'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>',
   cam:'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  share:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>',
   edit:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>'
 };
 
@@ -450,9 +452,9 @@ function vHoje(){
     const plan = FICHA.sched[wd];
     const isRest = plan==='ativo'||plan==='total';
     const isToday = sameDay(dayTs, now);
-    const g = done.length ? done.map(s=>esc(s.letter)).join('') : (isRest ? (plan==='ativo'?'☾':'⚡') : plan);
-    const sub = done.length ? 'feito' : (isRest ? 'folga' : '');
-    return `<div class="day${done.length?' done':''}${isRest&&!done.length?' rest':''}${isToday?' today':''}"><span class="d">${WD[wd]}</span><span class="g">${g}</span><span class="s">${sub}</span></div>`;
+    const g = done.length ? `<span class="ck" aria-hidden="true">${ICON.check}</span>` : (isRest ? (plan==='ativo'?'☾':'⚡') : plan);
+    const sub = done.length ? done.map(s=>esc(s.letter)).join('+') : (isRest ? 'folga' : '');
+    return `<div class="day${done.length?' done':''}${isRest&&!done.length?' rest':''}${isToday?' today':''}" aria-label="${DIAS[wd]}${done.length?': treino '+done.map(s=>esc(s.letter)).join(' e ')+' feito':''}"><span class="d">${WD[wd]}</span><span class="g">${g}</span><span class="s">${sub}</span></div>`;
   }).join('');
   const lastBody = S.body[S.body.length-1];
   const lastAny = S.sessions[0];
@@ -465,7 +467,7 @@ function vHoje(){
   return `<header class="top"><span class="date">${esc(date)}</span><span class="top-r">${statusPill()}${avatarBtn()}</span></header>
     ${hero}
     <p class="todayline">${today}</p>
-    <div class="section"><h2 class="h2">Esta semana</h2><div class="week">${cells}</div></div>
+    <div class="section"><div class="card-h"><h2 class="h2">Esta semana</h2><button class="link" data-a="share" data-t="semana">${ICON.share} Compartilhar</button></div><div class="week">${cells}</div></div>
     <div class="section">${tiles}</div>`;
 }
 
@@ -482,10 +484,11 @@ function vTreinos(){
   const cards = FICHA.order.map(L=>{
     const W = FICHA.W[L];
     const last = S.sessions.find(s=>s.letter===L && s.planId===FICHA.id);
-    return `<button class="wcard" data-a="go" data-v="treino:${L}">
+    const naSemana = last && last.start >= startOfWeek(Date.now());
+    return `<button class="wcard${naSemana?' feito':''}" data-a="go" data-v="treino:${L}">
       <span class="wl neon" aria-hidden="true">${L}</span>
-      <span><b>${esc(W.name)}</b><small>${esc(W.focus)}</small><small>${W.ex.length} exercícios · ${W.total} séries${last?' · feito '+fmtDate(last.start):''}</small></span>
-      <span class="chev" aria-hidden="true">›</span></button>`;
+      <span><b>${esc(W.name)}</b><small>${esc(W.focus)}</small><small>${W.ex.length} exercícios · ${W.total} séries${last && !naSemana?' · feito '+fmtDate(last.start):''}</small>${naSemana?`<span class="chip ok wk">✓ Feito ${esc(fmtDate(last.start))}</span>`:''}</span>
+      <span class="chev" aria-hidden="true">${naSemana?`<span class="ck big">${ICON.check}</span>`:'›'}</span></button>`;
   }).join('');
   return `<header class="top"><h1 class="h1">Treinos</h1><span class="top-r">${statusPill()}${avatarBtn()}</span></header>
     <section class="card"><div class="card-h"><h2 class="h2">${esc(FICHA.nome)}</h2><button class="link" data-a="f-edit">${ICON.edit} Editar</button></div>
@@ -575,7 +578,8 @@ function updateProgress(){
 
 /* ----- Histórico ----- */
 function vHistorico(){
-  const head = `<header class="top"><h1 class="h1">Histórico</h1><span class="top-r">${statusPill()}${avatarBtn()}</span></header>`;
+  const head = `<header class="top"><h1 class="h1">Histórico</h1><span class="top-r">${statusPill()}${avatarBtn()}</span></header>`
+    + (S.sessions.length ? `<div class="btns two" style="margin-bottom:14px"><button class="btn sm" data-a="share" data-t="semana">${ICON.share} Semana</button><button class="btn sm" data-a="share" data-t="mes">${ICON.share} Mês</button></div>` : '');
   if(!S.sessions.length) return head+`<div class="empty"><b>Nenhum treino salvo ainda</b>Quando você finalizar um treino, ele aparece aqui com data, duração, séries e volume.</div>`;
   let html='', month='';
   S.sessions.forEach(s=>{
@@ -930,7 +934,7 @@ async function saveSession(){
   const L = s.letter, ord = FICHA ? FICHA.order : [L];
   const nx = ord[(ord.indexOf(L)+1)%ord.length];
   go('hoje');
-  toast('Treino '+L+' salvo. Próximo: Treino '+nx+'.'+(prs.length?' '+prs.length+(prs.length>1?' recordes':' recorde')+' hoje.':''));
+  abrirCompartilhar('semana', s, 'Treino '+L+' salvo! Próximo: Treino '+nx+'.'+(prs.length?' '+prs.length+(prs.length>1?' recordes':' recorde')+' hoje.':''));
   await enviarPendentes();
 }
 async function enviarPendentes(){
@@ -960,7 +964,7 @@ function histDetail(id){
     <div class="tile"><div class="k">Séries</div><div class="v">${s.done}<small>/${s.total}</small></div></div>
     <div class="tile"><div class="k">Volume</div><div class="v">${fmtInt(s.vol)}<small> kg</small></div></div></div>
     ${ex}${s.notes?`<div class="dex"><b>Observações</b><div>${esc(s.notes)}</div></div>`:''}
-    <div class="btns" style="margin-top:14px"><button class="btn" data-a="copy" data-id="${esc(s.id)}">Copiar resumo</button>
+    <div class="btns" style="margin-top:14px"><button class="btn primary" data-a="share" data-t="semana" data-id="${esc(s.id)}">${ICON.share} Compartilhar imagem</button><button class="btn" data-a="copy" data-id="${esc(s.id)}">Copiar resumo</button>
     <button class="btn danger" data-a="hdel" data-id="${esc(s.id)}">Excluir este treino</button>
     <button class="btn ghost" data-a="close">Fechar</button></div>`);
 }
@@ -1191,6 +1195,53 @@ function fichasSheet(){
     <div class="btns" style="margin-top:14px"><button class="btn" data-a="go-close" data-v="onboarding">+ Nova ficha</button><button class="btn ghost" data-a="close">Fechar</button></div>`);
 }
 
+/* ---------- Compartilhar (imagem da semana ou do mês) ---------- */
+const CARD = { tipo:'semana', ref:null, titulo:'', blob:null, url:null };
+function dadosSemana(ref){
+  const base = ref ? ref.start : Date.now();
+  const wk = startOfWeek(base), fim = wk + 7*864e5;
+  const doSemana = S.sessions.filter(s=>s.start>=wk && s.start<fim);
+  const dias = SEMANA.map((wd,i)=>({ label:WD[wd][0], feito: doSemana.some(s=>sameDay(s.start, wk+i*864e5)), futuro: wk+i*864e5 > Date.now(), hoje: sameDay(wk+i*864e5, Date.now()) }));
+  return { ref, data: ref ? ref.start : Date.now(), dias, nDias: dias.filter(d=>d.feito).length,
+    tempoSemana: doSemana.reduce((n,s)=>n+(s.dur||0),0), treinosSemana: doSemana.length, volSemana: doSemana.reduce((n,s)=>n+(s.vol||0),0), nome: NOME || EMAIL.split('@')[0] };
+}
+function dadosMes(ref){
+  const base = new Date(ref ? ref.start : Date.now());
+  const ano = base.getFullYear(), mes = base.getMonth();
+  const doMes = S.sessions.filter(s=>{ const d=new Date(s.start); return d.getFullYear()===ano && d.getMonth()===mes; });
+  const feitos = new Set(doMes.map(s=>new Date(s.start).getDate()));
+  return { ano, mes, feitos, nDias: feitos.size, tempo: doMes.reduce((n,s)=>n+(s.dur||0),0), treinos: doMes.length, data: Date.now(), nome: NOME || EMAIL.split('@')[0] };
+}
+async function abrirCompartilhar(tipo, ref, titulo){
+  CARD.tipo = tipo; CARD.ref = ref || null; CARD.titulo = titulo || '';
+  if(CARD.url){ try{ URL.revokeObjectURL(CARD.url); }catch(e){} CARD.url = null; }
+  CARD.blob = null;
+  const tabs = `<div class="seg two" role="tablist"><button role="tab" aria-selected="${tipo==='semana'}" data-a="share-tab" data-t="semana">Semana</button><button role="tab" aria-selected="${tipo==='mes'}" data-a="share-tab" data-t="mes">Mês</button></div>`;
+  openSheet(`<h2>${esc(titulo || 'Compartilhar')}</h2><p>Imagem pronta para o story ou o WhatsApp.</p>${tabs}
+    <div class="cardprev" id="cardprev"><div class="spin" aria-hidden="true"></div></div>
+    <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="share-go" id="share-go" disabled>${ICON.share} Compartilhar</button>
+    <a class="btn ghost" id="share-dl" download="treino.png" aria-disabled="true">Baixar imagem</a>
+    <button class="btn ghost" data-a="close">Fechar</button></div>`);
+  try{
+    const canvas = tipo==='mes' ? await desenharMes(dadosMes(ref)) : await desenharSemana(dadosSemana(ref));
+    const blob = await new Promise(r=>canvas.toBlob(r, 'image/png'));
+    if(CARD.tipo!==tipo || CARD.ref!==(ref||null)) return;
+    CARD.blob = blob; CARD.url = URL.createObjectURL(blob);
+    const prev = $('#cardprev'); if(prev) prev.innerHTML = `<img src="${CARD.url}" alt="Imagem para compartilhar">`;
+    const dl = $('#share-dl'); if(dl){ dl.href = CARD.url; dl.download = (tipo==='mes'?'meus-treinos-mes':'meus-treinos-semana')+'.png'; dl.removeAttribute('aria-disabled'); }
+    const go = $('#share-go'); if(go) go.disabled = false;
+  }catch(e){ const prev = $('#cardprev'); if(prev) prev.innerHTML = '<p class="note">Não consegui gerar a imagem agora.</p>'; }
+}
+async function enviarCard(){
+  if(!CARD.blob) return;
+  const file = new File([CARD.blob], (CARD.tipo==='mes'?'meus-treinos-mes':'meus-treinos-semana')+'.png', {type:'image/png'});
+  try{
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file]}); return; }
+  }catch(e){ if(e && e.name==='AbortError') return; }
+  const dl = $('#share-dl'); if(dl) dl.click();
+  toast('Imagem baixada. É só postar a partir da galeria.');
+}
+
 /* ---------- Eventos ---------- */
 document.addEventListener('click', async e=>{
   if(e.target.id==='sheet'){ closeSheet(); return; }
@@ -1243,6 +1294,9 @@ document.addEventListener('click', async e=>{
     case 'recarregar': S.loadErr=''; render(); carregar(); break;
     // conta e fichas
     case 'perfil': perfilSheet(); break;
+    case 'share': { const ss = t.dataset.id ? S.sessions.find(x=>x.id===t.dataset.id) : null; abrirCompartilhar(t.dataset.t, ss); break; }
+    case 'share-tab': abrirCompartilhar(t.dataset.t, CARD.ref, CARD.titulo); break;
+    case 'share-go': enviarCard(); break;
     case 'p-nome-save': { const n = $('#p-nome').value.trim(); if(!n) break; try{ await D.salvarNome(UID, n); NOME = n; closeSheet(true); render(); toast('Nome salvo.'); }catch(err){ toast('Não consegui salvar agora.', true); } break; }
     case 'fichas': if(FICHA) fichasSheet(); break;
     case 'f-usar': { const id = t.dataset.id; if(S.draft){ toast('Finalize ou descarte o treino em andamento antes de trocar de ficha.', true); break; }

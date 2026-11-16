@@ -122,13 +122,28 @@ function idYoutube(u){
 function abrirVideo(url, titulo, deBiblioteca){
   const id = idYoutube(url);
   if(!id){ window.open(url, '_blank', 'noopener'); return; }
-  const src = 'https://www.youtube-nocookie.com/embed/'+id+'?autoplay=1&playsinline=1&rel=0&modestbranding=1';
+  // Capa própria do app no lugar da miniatura do YouTube; o vídeo só carrega no toque.
+  // mute=1 garante que ele já comece tocando (sem som o navegador não bloqueia) e a capa
+  // do canal não aparece; loop evita a tela final com sugestões.
+  const capa = `<button class="pl-capa" data-a="pl-play" data-id="${id}" data-t="${esc(titulo||'')}" aria-label="Tocar vídeo de execução">
+      <span class="pl-bt">${ICON.play}</span>
+      <span class="pl-tx">Toque para ver a execução</span>
+    </button>`;
   openSheet(`<h2 class="pl-t">${esc(titulo||'Execução')}</h2>
-    <div class="player">${navigator.onLine ? `<iframe src="${src}" title="${esc(titulo||'Vídeo de execução')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>` : '<p class="note">Sem internet: o vídeo abre quando a conexão voltar.</p>'}</div>
+    <div class="player">${navigator.onLine ? capa : '<p class="note">Sem internet: o vídeo abre quando a conexão voltar.</p>'}</div>
     <div class="btns" style="margin-top:12px">${deBiblioteca?'<button class="btn" data-a="biblioteca">Voltar à biblioteca</button>':''}<button class="btn ghost" data-a="close">Fechar</button></div>
     <p class="note" style="text-align:center"><a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener noreferrer" class="link">Abrir no YouTube</a></p>`);
 }
+function tocarVideo(bt){
+  const id = bt.dataset.id;
+  if(!/^[A-Za-z0-9_-]{11}$/.test(id||'')) return;
+  const src = 'https://www.youtube-nocookie.com/embed/'+id+'?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&loop=1&playlist='+id;
+  const box = bt.parentNode;
+  box.innerHTML = `<iframe src="${src}" title="${esc(bt.dataset.t||'Vídeo de execução')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+}
 document.addEventListener('click', e=>{
+  const p = e.target.closest && e.target.closest('[data-a="pl-play"]');
+  if(p){ e.preventDefault(); e.stopPropagation(); tocarVideo(p); return; }
   const a = e.target.closest && e.target.closest('a[data-video]');
   if(!a || !idYoutube(a.href)) return;
   e.preventDefault(); e.stopPropagation();

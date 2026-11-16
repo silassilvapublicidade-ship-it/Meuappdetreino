@@ -41,6 +41,49 @@ function glow(x, cx, cy, r, cor){ const g = x.createRadialGradient(cx,cy,0,cx,cy
 function rr(x, l, t, w, h, r){ x.beginPath(); x.moveTo(l+r,t); x.arcTo(l+w,t,l+w,t+h,r); x.arcTo(l+w,t+h,l,t+h,r); x.arcTo(l,t+h,l,t,r); x.arcTo(l,t,l+w,t,r); x.closePath(); }
 function gradTxt(x, y0, y1){ const g = x.createLinearGradient(0,y0,0,y1); g.addColorStop(0,'#7ff5cf'); g.addColorStop(1,COR.cyan); return g; }
 
+
+/* ---------- equipamento no fundo (halter e anilha, bem transparentes) ---------- */
+function equipamento(x){
+  const traco = (a)=>{ const g = x.createLinearGradient(0,0,W,H); g.addColorStop(0,`rgba(60,201,255,${a})`); g.addColorStop(1,`rgba(67,227,173,${a})`); return g; };
+  // anilha cortada no canto superior direito
+  x.save();
+  x.translate(W - 30, 560);
+  x.globalAlpha = 0.8; x.lineWidth = 5; x.strokeStyle = traco(0.16); x.shadowColor = 'rgba(60,201,255,.5)'; x.shadowBlur = 18;
+  [330, 300, 210, 150, 62].forEach((r,i)=>{ x.beginPath(); x.arc(0,0,r,0,Math.PI*2); x.lineWidth = i===0||i===4 ? 6 : 3; x.stroke(); });
+  x.fillStyle = 'rgba(60,201,255,.035)'; x.beginPath(); x.arc(0,0,300,0,Math.PI*2); x.arc(0,0,210,0,Math.PI*2,true); x.fill();
+  // furos de pegada
+  [0.75, 2.35, 3.9, 5.45].forEach(a=>{ x.beginPath(); x.ellipse(Math.cos(a)*255, Math.sin(a)*255, 34, 20, a, 0, Math.PI*2); x.lineWidth = 3; x.stroke(); });
+  x.font = `400 64px ${DISPLAY}`; x.fillStyle = 'rgba(67,227,173,.12)'; x.textAlign = 'center'; x.shadowBlur = 0;
+  x.save(); x.rotate(-0.5); x.fillText('20 KG', -10, -232); x.restore();
+  x.restore();
+
+  // halter grande na diagonal
+  x.save();
+  x.translate(W*0.58, 1790); x.rotate(-0.30); x.globalAlpha = 0.8;
+  x.lineJoin = 'round'; x.shadowColor = 'rgba(67,227,173,.45)'; x.shadowBlur = 16;
+  const stroke = (a, lw)=>{ x.lineWidth = lw; x.strokeStyle = traco(a); x.stroke(); };
+  const fill = a=>{ x.fillStyle = `rgba(60,201,255,${a})`; x.fill(); };
+  // pegada com recartilhado
+  rr(x, -230, -26, 460, 52, 14); fill(0.03); stroke(0.18, 4);
+  x.save(); x.beginPath(); rr(x, -220, -24, 440, 48, 12); x.clip();
+  x.lineWidth = 1.5; x.strokeStyle = 'rgba(60,201,255,.12)';
+  for(let i=-260; i<260; i+=16){ x.beginPath(); x.moveTo(i,-30); x.lineTo(i+30,30); x.stroke(); x.beginPath(); x.moveTo(i+30,-30); x.lineTo(i,30); x.stroke(); }
+  x.restore();
+  [-1, 1].forEach(lado=>{
+    let px = 240;
+    const pecas = [[40, 120, 12], [70, 300, 20], [62, 270, 18], [54, 236, 16], [34, 120, 10]]; // [largura, altura, raio]
+    pecas.forEach(([w,h,r])=>{
+      const l = lado>0 ? px : -px - w;
+      rr(x, l, -h/2, w, h, r); fill(0.035); stroke(0.2, 4);
+      px += w + 6;
+    });
+    // ponta
+    const l = lado>0 ? px : -px - 26;
+    rr(x, l, -22, 26, 44, 8); stroke(0.18, 3);
+  });
+  x.restore();
+}
+
 /* ---------- peças ---------- */
 function marca(x, ts){
   x.textBaseline = 'alphabetic'; x.textAlign = 'left';
@@ -145,7 +188,7 @@ export async function desenharSemana(d){
   await fontes();
   const [c, x] = base();
   const s = d.ref;
-  letraFundo(x, s ? String(s.letter||'').slice(0,1) : 'S');
+  equipamento(x);
   marca(x, d.data);
   rotulo(x, s ? 'TREINO CONCLUÍDO' : 'MINHA SEMANA', 400);
   x.textAlign = 'left'; x.font = `400 230px ${DISPLAY}`; x.fillStyle = COR.ink;
@@ -166,6 +209,7 @@ export async function desenharSemana(d){
 export async function desenharMes(d){
   await fontes();
   const [c, x] = base();
+  equipamento(x);
   marca(x, d.data);
   rotulo(x, 'RESUMO DO MÊS', 400);
   x.textAlign = 'left'; x.font = `400 210px ${DISPLAY}`; x.fillStyle = COR.ink; x.fillText(MESES[d.mes].toUpperCase(), 72, 590);

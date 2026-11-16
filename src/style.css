@@ -337,7 +337,7 @@ select.inp.sm{background-position:calc(100% - 18px) 18px,calc(100% - 13px) 18px}
 .chip.wk{display:inline-block;margin-top:6px;font-size:11px}
 .seg.two{grid-template-columns:1fr 1fr}
 .cardprev{margin-top:12px;border-radius:16px;overflow:hidden;border:1px solid var(--line);background:#000;min-height:220px;display:grid;place-items:center}
-.cardprev img{width:100%;display:block}
+.cardprev img{width:auto;max-width:100%;max-height:58vh;display:block;margin:0 auto}
 a.btn{text-decoration:none}
 a.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
 

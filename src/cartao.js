@@ -1,158 +1,200 @@
-// Imagens para compartilhar (1080 x 1350, formato do feed e bom para story).
+// Imagens para compartilhar no formato do story do Instagram (1080 x 1920).
+// Conteúdo importante fica entre y=230 e y=1680 (o Instagram cobre topo e rodapé).
 
-const W = 1080, H = 1350;
-const COR = { bg:'#050a0e', panel:'#0d1b22', line:'#1d3a46', ink:'#ecf5f7', muted:'#8ca2ab', cyan:'#3cc9ff', mint:'#43e3ad', dim:'#3c525b' };
-const FONTE = 'Montserrat, "Arial Black", system-ui, sans-serif';
+const W = 1080, H = 1920;
+const COR = { bg:'#04080b', ink:'#f2f8f9', muted:'#8ca2ab', soft:'#5d737c', cyan:'#3cc9ff', mint:'#43e3ad', line:'#1d3a46', dim:'#27404a' };
+const DISPLAY = '"Bebas Neue", "Oswald", Impact, "Arial Narrow", sans-serif';
+const BODY = 'Montserrat, system-ui, sans-serif';
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 async function fontes(){
-  try{ await Promise.all(['900 80px Montserrat','800 60px Montserrat','700 40px Montserrat','600 30px Montserrat'].map(f=>document.fonts.load(f))); }catch(e){}
+  try{ await Promise.all(['400 200px "Bebas Neue"','800 40px Montserrat','700 30px Montserrat','600 28px Montserrat'].map(f=>document.fonts.load(f))); }catch(e){}
 }
 function pad(n){ return String(n).padStart(2,'0'); }
-function dataBR(ts){ const d = new Date(ts); return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear(); }
+function dataBR(ts){ const d = new Date(ts); return pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear(); }
 export function tempoTxt(seg){
   const m = Math.max(0, Math.floor((seg||0)/60));
   if(m < 60) return m+' min';
   const h = Math.floor(m/60), r = m%60;
-  return r ? h+' h '+r+' min' : h+' h';
+  return r ? h+'h'+pad(r) : h+'h';
 }
 
+/* ---------- fundo ---------- */
 function base(){
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d');
   x.fillStyle = COR.bg; x.fillRect(0,0,W,H);
-  let g = x.createRadialGradient(80,0,0,80,0,900); g.addColorStop(0,'rgba(28,110,160,.45)'); g.addColorStop(1,'rgba(28,110,160,0)');
-  x.fillStyle = g; x.fillRect(0,0,W,H);
-  g = x.createRadialGradient(W,H,0,W,H,900); g.addColorStop(0,'rgba(30,140,110,.32)'); g.addColorStop(1,'rgba(30,140,110,0)');
-  x.fillStyle = g; x.fillRect(0,0,W,H);
-  // moldura
-  x.strokeStyle = COR.line; x.lineWidth = 3; roundRect(x, 24, 24, W-48, H-48, 44); x.stroke();
+  glow(x, -80, 120, 1000, 'rgba(30,120,180,.55)');
+  glow(x, W+60, H-180, 1100, 'rgba(30,150,115,.42)');
+  glow(x, W*0.75, H*0.38, 700, 'rgba(60,201,255,.10)');
+  x.save(); x.globalAlpha = 0.045; x.strokeStyle = '#ffffff'; x.lineWidth = 1.2;
+  for(let i=-H; i<W; i+=30){ x.beginPath(); x.moveTo(i,0); x.lineTo(i+H,H); x.stroke(); }
+  x.restore();
+  const v = x.createRadialGradient(W/2,H/2,H*0.25,W/2,H/2,H*0.75); v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(1,'rgba(0,0,0,.55)');
+  x.fillStyle = v; x.fillRect(0,0,W,H);
+  const g = x.getImageData(0,0,W,H), d = g.data;
+  for(let i=0;i<d.length;i+=4){ const n = (Math.random()-0.5)*14; d[i]+=n; d[i+1]+=n; d[i+2]+=n; }
+  x.putImageData(g,0,0);
   return [c, x];
 }
-function roundRect(x, l, t, w, h, r){ x.beginPath(); x.moveTo(l+r,t); x.arcTo(l+w,t,l+w,t+h,r); x.arcTo(l+w,t+h,l,t+h,r); x.arcTo(l,t+h,l,t,r); x.arcTo(l,t,l+w,t,r); x.closePath(); }
-function cabecalho(x, ts){
+function glow(x, cx, cy, r, cor){ const g = x.createRadialGradient(cx,cy,0,cx,cy,r); g.addColorStop(0,cor); g.addColorStop(1,'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0,0,W,H); }
+function rr(x, l, t, w, h, r){ x.beginPath(); x.moveTo(l+r,t); x.arcTo(l+w,t,l+w,t+h,r); x.arcTo(l+w,t+h,l,t+h,r); x.arcTo(l,t+h,l,t,r); x.arcTo(l,t,l+w,t,r); x.closePath(); }
+function gradTxt(x, y0, y1){ const g = x.createLinearGradient(0,y0,0,y1); g.addColorStop(0,'#7ff5cf'); g.addColorStop(1,COR.cyan); return g; }
+
+/* ---------- peças ---------- */
+function marca(x, ts){
   x.textBaseline = 'alphabetic'; x.textAlign = 'left';
-  x.font = `900 46px ${FONTE}`;
-  x.save(); x.shadowColor = 'rgba(60,201,255,.8)'; x.shadowBlur = 14; x.strokeStyle = COR.cyan; x.lineWidth = 2.4; x.strokeText('MEUS', 80, 128); x.restore();
+  x.font = `400 64px ${DISPLAY}`;
+  x.save(); x.shadowColor = 'rgba(60,201,255,.9)'; x.shadowBlur = 16; x.strokeStyle = COR.cyan; x.lineWidth = 2; x.strokeText('MEUS', 80, 290); x.restore();
   const w = x.measureText('MEUS ').width;
-  x.fillStyle = COR.mint; x.fillText('TREINOS', 80 + w, 128);
-  x.textAlign = 'right'; x.font = `600 38px ${FONTE}`; x.fillStyle = COR.muted; x.fillText(dataBR(ts), W-80, 126);
+  x.fillStyle = COR.mint; x.fillText('TREINOS', 80 + w, 290);
+  x.textAlign = 'right'; x.font = `700 30px ${BODY}`; x.fillStyle = COR.muted; x.fillText(dataBR(ts), W-80, 284);
+  const g = x.createLinearGradient(80,0,W-80,0); g.addColorStop(0,'rgba(60,201,255,.7)'); g.addColorStop(.5,'rgba(67,227,173,.35)'); g.addColorStop(1,'rgba(67,227,173,0)');
+  x.fillStyle = g; x.fillRect(80, 318, W-160, 2);
 }
-function texto(x, txt, cx, y, font, cor, align='center'){ x.font = font; x.fillStyle = cor; x.textAlign = align; x.fillText(txt, cx, y); }
-// frase com partes coloridas, centralizada
-function rico(x, partes, cx, y, font){
-  x.font = font; x.textAlign = 'left';
-  const total = partes.reduce((n,[t])=>n + x.measureText(t).width, 0);
-  let px = cx - total/2;
-  partes.forEach(([t,c])=>{ x.fillStyle = c; x.fillText(t, px, y); px += x.measureText(t).width; });
+function espacado(x, txt, cx, y, sp, align='center'){
+  const larg = [...txt].reduce((n,ch)=>n + x.measureText(ch).width + sp, -sp);
+  let px = align==='center' ? cx - larg/2 : cx; x.textAlign = 'left';
+  for(const ch of txt){ x.fillText(ch, px, y); px += x.measureText(ch).width + sp; }
+}
+function rotulo(x, txt, y, cor=COR.mint){
+  x.font = `800 28px ${BODY}`; x.fillStyle = cor;
+  x.fillRect(80, y-11, 44, 4);
+  espacado(x, txt, 142, y, 7, 'left');
+}
+function letraFundo(x, letra){
+  x.save(); x.font = `400 1350px ${DISPLAY}`; x.textAlign = 'right';
+  x.globalAlpha = 0.11; x.lineWidth = 6; x.strokeStyle = COR.cyan; x.shadowColor = COR.cyan; x.shadowBlur = 40;
+  x.strokeText(letra, W+90, 1260); x.restore();
+}
+function painel(x, l, t, w, h){
+  x.save(); rr(x, l, t, w, h, 26);
+  x.fillStyle = 'rgba(13,30,38,.72)'; x.fill();
+  const g = x.createLinearGradient(l,t,l+w,t+h); g.addColorStop(0,'rgba(60,201,255,.55)'); g.addColorStop(1,'rgba(67,227,173,.25)');
+  x.lineWidth = 2; x.strokeStyle = g; x.stroke(); x.restore();
+}
+function stats(x, itens, y){
+  const gap = 22, w = (W-160-gap*2)/3, h = 200;
+  itens.forEach(([v,l],i)=>{
+    const lft = 80 + i*(w+gap);
+    painel(x, lft, y, w, h);
+    x.textAlign = 'center';
+    x.font = `400 ${v.length>8?78:96}px ${DISPLAY}`; x.fillStyle = COR.ink; x.fillText(v, lft+w/2, y+116);
+    x.font = `800 22px ${BODY}`; x.fillStyle = COR.muted; espacado(x, l, lft+w/2, y+164, 4);
+  });
 }
 function check(x, cx, cy, r, cor){
-  x.strokeStyle = cor; x.lineWidth = r*0.22; x.lineCap = 'round'; x.lineJoin = 'round';
-  x.beginPath(); x.moveTo(cx - r*0.42, cy + r*0.02); x.lineTo(cx - r*0.1, cy + r*0.34); x.lineTo(cx + r*0.45, cy - r*0.3); x.stroke();
+  x.strokeStyle = cor; x.lineWidth = r*0.2; x.lineCap = 'round'; x.lineJoin = 'round';
+  x.beginPath(); x.moveTo(cx - r*0.4, cy + r*0.02); x.lineTo(cx - r*0.1, cy + r*0.32); x.lineTo(cx + r*0.42, cy - r*0.28); x.stroke();
 }
-// Rodapé: foto redonda (se houver) + nome e @ do Instagram (se houver), centralizados
-function rodapeNome(x, d, y){
+function semana(x, dias, y){
+  const r = 52, passo = (W-160)/7;
+  dias.forEach((dia,i)=>{
+    const cx = 80 + passo*i + passo/2;
+    x.beginPath(); x.arc(cx, y, r, 0, Math.PI*2);
+    if(dia.feito){
+      x.save(); x.shadowColor = 'rgba(67,227,173,.75)'; x.shadowBlur = 30;
+      const g = x.createLinearGradient(cx, y-r, cx, y+r); g.addColorStop(0,'#7ff5cf'); g.addColorStop(1,'#2fcf98');
+      x.fillStyle = g; x.fill(); x.restore();
+      check(x, cx, y, r, '#03140e');
+    } else {
+      if(!dia.futuro){ x.fillStyle = 'rgba(13,30,38,.6)'; x.fill(); }
+      x.lineWidth = 4; x.strokeStyle = dia.futuro ? COR.dim : COR.line; x.stroke();
+    }
+    if(dia.hoje && !dia.feito){ x.beginPath(); x.arc(cx, y, r+10, 0, Math.PI*2); x.lineWidth = 3; x.strokeStyle = COR.cyan; x.stroke(); }
+    x.textAlign = 'center'; x.font = `800 30px ${BODY}`; x.fillStyle = dia.feito ? COR.ink : COR.soft;
+    x.fillText(dia.label, cx, y + r + 50);
+  });
+}
+function destaqueNumero(x, n, linha1, linha2, y){
+  x.textAlign = 'left'; x.font = `400 260px ${DISPLAY}`;
+  x.save(); x.shadowColor = 'rgba(67,227,173,.55)'; x.shadowBlur = 40; x.fillStyle = gradTxt(x, y-190, y); x.fillText(String(n), 80, y); x.restore();
+  const wn = x.measureText(String(n)).width;
+  const livre = W - 80 - (80 + wn + 34);
+  const caber = t=>{ let sz = 86; x.font = `400 ${sz}px ${DISPLAY}`; while(x.measureText(t).width > livre && sz > 50){ sz -= 4; x.font = `400 ${sz}px ${DISPLAY}`; } };
+  caber(linha1); x.fillStyle = COR.ink; x.fillText(linha1, 80 + wn + 34, y - 96);
+  caber(linha2); x.fillStyle = COR.muted; x.fillText(linha2, 80 + wn + 34, y - 10);
+}
+function perfil(x, d, y){
   const nome = d.nome || '', insta = d.insta ? '@'+d.insta : '';
   if(!nome && !insta && !d.foto) return;
-  const R = 34, gap = 18;
-  x.font = `800 34px ${FONTE}`; const wn = x.measureText(nome).width;
-  x.font = `600 28px ${FONTE}`; const wi = insta ? x.measureText(insta).width : 0;
-  const wt = Math.max(wn, wi);
-  const total = (d.foto ? R*2 + gap : 0) + wt;
-  let px = W/2 - total/2;
+  const R = 50;
+  painel(x, 80, y-80, W-160, 160);
+  let px = 120;
   if(d.foto){
-    const cx = px + R, cy = y - 10;
-    x.save(); x.beginPath(); x.arc(cx, cy, R, 0, Math.PI*2); x.closePath(); x.clip();
+    const cx = px + R, cy = y;
+    x.save(); x.beginPath(); x.arc(cx, cy, R, 0, Math.PI*2); x.clip();
     const s = Math.min(d.foto.width, d.foto.height);
     x.drawImage(d.foto, (d.foto.width-s)/2, (d.foto.height-s)/2, s, s, cx-R, cy-R, R*2, R*2);
     x.restore();
-    x.beginPath(); x.arc(cx, cy, R+3, 0, Math.PI*2); x.lineWidth = 4; x.strokeStyle = COR.mint; x.stroke();
-    px += R*2 + gap;
+    x.beginPath(); x.arc(cx, cy, R+4, 0, Math.PI*2); x.lineWidth = 5; x.strokeStyle = COR.mint; x.stroke();
+    px += R*2 + 30;
   }
   x.textAlign = 'left';
   if(insta){
-    x.font = `800 34px ${FONTE}`; x.fillStyle = COR.ink; x.fillText(nome, px, y - 18);
-    x.font = `600 28px ${FONTE}`; x.fillStyle = COR.cyan; x.fillText(insta, px, y + 20);
+    x.font = `800 38px ${BODY}`; x.fillStyle = COR.ink; x.fillText(nome, px, y - 6);
+    x.font = `700 32px ${BODY}`; x.fillStyle = COR.cyan; x.fillText(insta, px, y + 38);
   } else {
-    x.font = `800 34px ${FONTE}`; x.fillStyle = COR.cyan; x.fillText(nome, px, y + 2);
+    x.font = `800 40px ${BODY}`; x.fillStyle = COR.ink; x.fillText(nome, px, y + 14);
   }
+  x.textAlign = 'right'; x.font = `400 44px ${DISPLAY}`; x.fillStyle = COR.mint; x.fillText('NO FOCO', W-120, y + 14);
 }
 
+/* ---------- semana ---------- */
 export async function desenharSemana(d){
   await fontes();
   const [c, x] = base();
-  cabecalho(x, d.data);
   const s = d.ref;
-  // destaque central
-  if(s){
-    x.save(); x.font = `900 250px ${FONTE}`; x.textAlign = 'center'; x.lineWidth = 5; x.strokeStyle = COR.cyan;
-    x.shadowColor = 'rgba(60,201,255,.75)'; x.shadowBlur = 30; x.strokeText(String(s.letter||'').slice(0,2), W/2, 450); x.restore();
-    texto(x, 'Treino concluído!', W/2, 560, `800 66px ${FONTE}`, COR.ink);
-    texto(x, String(s.wname||'').toUpperCase(), W/2, 622, `800 36px ${FONTE}`, COR.mint);
-  } else {
-    texto(x, 'Minha semana', W/2, 420, `900 92px ${FONTE}`, COR.ink);
-    texto(x, 'DE TREINO', W/2, 490, `800 40px ${FONTE}`, COR.mint);
-  }
-  // números
-  const stats = s
+  letraFundo(x, s ? String(s.letter||'').slice(0,1) : 'S');
+  marca(x, d.data);
+  rotulo(x, s ? 'TREINO CONCLUÍDO' : 'MINHA SEMANA', 400);
+  x.textAlign = 'left'; x.font = `400 230px ${DISPLAY}`; x.fillStyle = COR.ink;
+  x.fillText(s ? 'TREINO '+String(s.letter||'') : 'SEMANA', 72, 610);
+  x.font = `400 120px ${DISPLAY}`; x.fillStyle = gradTxt(x, 630, 740);
+  x.fillText(s ? String(s.wname||'').toUpperCase().slice(0,22) : 'DE TREINO', 76, 732);
+  stats(x, s
     ? [[tempoTxt(s.dur), 'TEMPO'], [s.done+'/'+s.total, 'SÉRIES'], [Math.floor(s.vol||0).toLocaleString('pt-BR')+' kg', 'VOLUME']]
-    : [[String(d.treinosSemana), d.treinosSemana===1?'TREINO':'TREINOS'], [tempoTxt(d.tempoSemana), 'TEMPO TOTAL'], [Math.floor(d.volSemana||0).toLocaleString('pt-BR')+' kg', 'VOLUME']];
-  const yS = s ? 735 : 640;
-  stats.forEach(([v,l],i)=>{
-    const cx = 200 + i*340;
-    texto(x, v, cx, yS, `900 ${v.length>8?44:52}px ${FONTE}`, COR.ink);
-    texto(x, l, cx, yS+46, `700 24px ${FONTE}`, COR.muted);
-  });
-  // semana
-  const yC = s ? 930 : 860, r = 54, passo = (W-160)/7;
-  d.dias.forEach((dia,i)=>{
-    const cx = 80 + passo*i + passo/2;
-    x.beginPath(); x.arc(cx, yC, r, 0, Math.PI*2);
-    if(dia.feito){
-      x.save(); x.shadowColor = 'rgba(67,227,173,.6)'; x.shadowBlur = 22; x.fillStyle = COR.mint; x.fill(); x.restore();
-      check(x, cx, yC, r, '#03140e');
-    } else {
-      x.lineWidth = 5; x.strokeStyle = dia.futuro ? COR.dim : COR.line; x.stroke();
-    }
-    if(dia.hoje && !dia.feito){ x.beginPath(); x.arc(cx, yC, r+9, 0, Math.PI*2); x.lineWidth = 3; x.strokeStyle = COR.cyan; x.stroke(); }
-    texto(x, dia.label, cx, yC + r + 52, `800 34px ${FONTE}`, dia.feito ? COR.ink : COR.muted);
-  });
-  // frase
-  const n = d.nDias;
-  rico(x, [['Você treinou ', COR.ink], [String(n), COR.mint], [n===1?' dia essa semana':' dias essa semana', COR.ink]], W/2, s ? 1170 : 1110, `800 50px ${FONTE}`);
-  rodapeNome(x, d, s ? 1250 : 1200);
+    : [[String(d.treinosSemana), d.treinosSemana===1?'TREINO':'TREINOS'], [tempoTxt(d.tempoSemana), 'TEMPO'], [Math.floor(d.volSemana||0).toLocaleString('pt-BR')+' kg', 'VOLUME']], 790);
+  rotulo(x, 'SEMANA', 1090, COR.cyan);
+  semana(x, d.dias, 1180);
+  destaqueNumero(x, d.nDias, d.nDias===1?'DIA DE TREINO':'DIAS DE TREINO', 'NESTA SEMANA', 1500);
+  perfil(x, d, 1592);
   return c;
 }
 
+/* ---------- mês ---------- */
 export async function desenharMes(d){
   await fontes();
   const [c, x] = base();
-  cabecalho(x, d.data);
-  texto(x, MESES[d.mes], W/2, 250, `900 72px ${FONTE}`, COR.ink);
-  const dias = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+  marca(x, d.data);
+  rotulo(x, 'RESUMO DO MÊS', 400);
+  x.textAlign = 'left'; x.font = `400 210px ${DISPLAY}`; x.fillStyle = COR.ink; x.fillText(MESES[d.mes].toUpperCase(), 72, 590);
+  x.font = `400 86px ${DISPLAY}`; x.fillStyle = gradTxt(x, 610, 690); x.fillText(String(d.ano), 78, 682);
   const passo = (W-160)/7, x0 = 80;
-  dias.forEach((t,i)=> texto(x, t, x0 + passo*i + passo/2, 335, `700 32px ${FONTE}`, COR.muted));
+  x.font = `800 24px ${BODY}`; x.fillStyle = COR.muted;
+  ['SEG','TER','QUA','QUI','SEX','SÁB','DOM'].forEach((t,i)=> espacado(x, t, x0 + passo*i + passo/2, 760, 3));
   const primeiro = new Date(d.ano, d.mes, 1);
   const off = (primeiro.getDay()+6)%7;
   const total = new Date(d.ano, d.mes+1, 0).getDate();
   const linhas = Math.ceil((off + total)/7);
-  const alt = linhas > 5 ? 112 : 128, r = linhas > 5 ? 46 : 50, y0 = 410;
+  const alt = linhas > 5 ? 86 : 100, r = linhas > 5 ? 36 : 40, y0 = 820;
   const hoje = new Date();
   for(let dia=1; dia<=total; dia++){
     const pos = off + dia - 1, col = pos%7, lin = Math.floor(pos/7);
     const cx = x0 + passo*col + passo/2, cy = y0 + lin*alt;
-    const feito = d.feitos.has(dia);
-    const futuro = new Date(d.ano, d.mes, dia) > hoje;
+    const feito = d.feitos.has(dia), futuro = new Date(d.ano, d.mes, dia) > hoje;
     x.beginPath(); x.arc(cx, cy, r, 0, Math.PI*2);
-    if(feito){ x.save(); x.shadowColor = 'rgba(67,227,173,.55)'; x.shadowBlur = 18; x.fillStyle = COR.mint; x.fill(); x.restore(); }
-    else if(!futuro){ x.fillStyle = COR.panel; x.fill(); }
-    x.textBaseline = 'middle';
-    texto(x, String(dia), cx, cy+2, `${feito?800:600} 36px ${FONTE}`, feito ? '#03140e' : (futuro ? COR.dim : COR.muted));
+    if(feito){
+      x.save(); x.shadowColor = 'rgba(67,227,173,.7)'; x.shadowBlur = 22;
+      const g = x.createLinearGradient(cx, cy-r, cx, cy+r); g.addColorStop(0,'#7ff5cf'); g.addColorStop(1,'#2fcf98');
+      x.fillStyle = g; x.fill(); x.restore();
+    } else if(!futuro){ x.fillStyle = 'rgba(13,30,38,.75)'; x.fill(); x.lineWidth = 2; x.strokeStyle = COR.line; x.stroke(); }
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.font = `${feito?800:600} 32px ${BODY}`; x.fillStyle = feito ? '#03140e' : (futuro ? COR.dim : COR.muted);
+    x.fillText(String(dia), cx, cy+1);
     x.textBaseline = 'alphabetic';
   }
-  const n = d.nDias;
-  rico(x, [['Você treinou ', COR.ink], [String(n), COR.mint], [n===1?' dia esse mês':' dias esse mês', COR.ink]], W/2, 1140, `800 50px ${FONTE}`);
-  texto(x, `${tempoTxt(d.tempo)} de treino · ${d.treinos} ${d.treinos===1?'treino':'treinos'}`, W/2, 1190, `600 32px ${FONTE}`, COR.muted);
-  rodapeNome(x, d, 1262);
+  destaqueNumero(x, d.nDias, d.nDias===1?'DIA DE TREINO':'DIAS DE TREINO', `${tempoTxt(d.tempo)} · ${d.treinos} ${d.treinos===1?'TREINO':'TREINOS'}`.toUpperCase(), 1500);
+  perfil(x, d, 1592);
   return c;
 }

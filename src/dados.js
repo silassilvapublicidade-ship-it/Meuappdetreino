@@ -35,7 +35,7 @@ function linhaParaFicha(r){
 // ---------- Carga inicial ----------
 export async function carregarTudo(uid){
   const [perfil, fichas, treinos, peso, aval, fotos, rascunho] = await Promise.all([
-    sb.from('profiles').select('nome').eq('id', uid).maybeSingle().then(ok),
+    sb.from('profiles').select('nome,avatar_path,instagram').eq('id', uid).maybeSingle().then(ok),
     sb.from('plans').select('*').order('created_at', { ascending: true }).then(ok),
     sb.from('sessions').select('*').order('started_at', { ascending: false }).limit(1000).then(ok),
     sb.from('body_weights').select('d,kg').order('d', { ascending: true }).then(ok),
@@ -45,6 +45,8 @@ export async function carregarTudo(uid){
   ]);
   return {
     nome: perfil && perfil.nome || '',
+    avatar: perfil && perfil.avatar_path || '',
+    instagram: perfil && perfil.instagram || '',
     fichas: (fichas || []).map(linhaParaFicha),
     treinos: (treinos || []).map(linhaParaTreino),
     peso: (peso || []).map(p => ({ d: p.d, kg: Number(p.kg) })),
@@ -55,9 +57,17 @@ export async function carregarTudo(uid){
 }
 
 // ---------- Perfil ----------
-export async function salvarNome(uid, nome){
-  ok(await sb.from('profiles').upsert({ id: uid, nome }, { onConflict: 'id' }));
+export async function salvarPerfil(uid, dados){
+  ok(await sb.from('profiles').upsert(Object.assign({ id: uid }, dados), { onConflict: 'id' }));
 }
+export async function enviarAvatar(uid, blob, antigo){
+  const path = `${uid}/avatar-${Date.now()}.jpg`;
+  ok(await sb.storage.from('fotos').upload(path, blob, { contentType: 'image/jpeg', upsert: false }));
+  ok(await sb.from('profiles').upsert({ id: uid, avatar_path: path }, { onConflict: 'id' }));
+  if(antigo && antigo !== path){ try{ await sb.storage.from('fotos').remove([antigo]); }catch(e){} urls.delete(antigo); }
+  return path;
+}
+export async function baixarFoto(path){ return ok(await sb.storage.from('fotos').download(path)); }
 
 // ---------- Fichas ----------
 export async function salvarFicha(uid, id, nome, json){

@@ -50,9 +50,32 @@ function check(x, cx, cy, r, cor){
   x.strokeStyle = cor; x.lineWidth = r*0.22; x.lineCap = 'round'; x.lineJoin = 'round';
   x.beginPath(); x.moveTo(cx - r*0.42, cy + r*0.02); x.lineTo(cx - r*0.1, cy + r*0.34); x.lineTo(cx + r*0.45, cy - r*0.3); x.stroke();
 }
-function rodapeNome(x, nome, y){
-  if(!nome) return;
-  texto(x, nome, W/2, y, `700 36px ${FONTE}`, COR.cyan);
+// Rodapé: foto redonda (se houver) + nome e @ do Instagram (se houver), centralizados
+function rodapeNome(x, d, y){
+  const nome = d.nome || '', insta = d.insta ? '@'+d.insta : '';
+  if(!nome && !insta && !d.foto) return;
+  const R = 34, gap = 18;
+  x.font = `800 34px ${FONTE}`; const wn = x.measureText(nome).width;
+  x.font = `600 28px ${FONTE}`; const wi = insta ? x.measureText(insta).width : 0;
+  const wt = Math.max(wn, wi);
+  const total = (d.foto ? R*2 + gap : 0) + wt;
+  let px = W/2 - total/2;
+  if(d.foto){
+    const cx = px + R, cy = y - 10;
+    x.save(); x.beginPath(); x.arc(cx, cy, R, 0, Math.PI*2); x.closePath(); x.clip();
+    const s = Math.min(d.foto.width, d.foto.height);
+    x.drawImage(d.foto, (d.foto.width-s)/2, (d.foto.height-s)/2, s, s, cx-R, cy-R, R*2, R*2);
+    x.restore();
+    x.beginPath(); x.arc(cx, cy, R+3, 0, Math.PI*2); x.lineWidth = 4; x.strokeStyle = COR.mint; x.stroke();
+    px += R*2 + gap;
+  }
+  x.textAlign = 'left';
+  if(insta){
+    x.font = `800 34px ${FONTE}`; x.fillStyle = COR.ink; x.fillText(nome, px, y - 18);
+    x.font = `600 28px ${FONTE}`; x.fillStyle = COR.cyan; x.fillText(insta, px, y + 20);
+  } else {
+    x.font = `800 34px ${FONTE}`; x.fillStyle = COR.cyan; x.fillText(nome, px, y + 2);
+  }
 }
 
 export async function desenharSemana(d){
@@ -97,7 +120,7 @@ export async function desenharSemana(d){
   // frase
   const n = d.nDias;
   rico(x, [['Você treinou ', COR.ink], [String(n), COR.mint], [n===1?' dia essa semana':' dias essa semana', COR.ink]], W/2, s ? 1170 : 1110, `800 50px ${FONTE}`);
-  rodapeNome(x, d.nome, s ? 1250 : 1200);
+  rodapeNome(x, d, s ? 1250 : 1200);
   return c;
 }
 
@@ -128,8 +151,8 @@ export async function desenharMes(d){
     x.textBaseline = 'alphabetic';
   }
   const n = d.nDias;
-  rico(x, [['Você treinou ', COR.ink], [String(n), COR.mint], [n===1?' dia esse mês':' dias esse mês', COR.ink]], W/2, 1170, `800 50px ${FONTE}`);
-  texto(x, `${tempoTxt(d.tempo)} de treino · ${d.treinos} ${d.treinos===1?'treino':'treinos'}`, W/2, 1222, `600 32px ${FONTE}`, COR.muted);
-  rodapeNome(x, d.nome, 1276);
+  rico(x, [['Você treinou ', COR.ink], [String(n), COR.mint], [n===1?' dia esse mês':' dias esse mês', COR.ink]], W/2, 1140, `800 50px ${FONTE}`);
+  texto(x, `${tempoTxt(d.tempo)} de treino · ${d.treinos} ${d.treinos===1?'treino':'treinos'}`, W/2, 1190, `600 32px ${FONTE}`, COR.muted);
+  rodapeNome(x, d, 1262);
   return c;
 }

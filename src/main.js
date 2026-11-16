@@ -50,7 +50,8 @@ const LS = {
 const kDraft = ()=>'mt.draft.'+UID, kPending = ()=>'mt.pending.'+UID;
 
 /* ---------- Estado ---------- */
-let UID = null, EMAIL = '', NOME = '';
+let UID = null, EMAIL = '', NOME = '', AVATAR = '', INSTA = '';
+let AVATAR_IMG = null; // imagem já baixada para os cartões
 let FICHAS = [];          // fichas do usuário (como vêm do banco)
 let FICHA = null;         // ficha ativa preparada: {id, nome, order, W, sched}
 const S = {
@@ -202,7 +203,7 @@ function renderStatus(){
 function renderLive(){ $('#live').hidden = !(S.draft && S.view!=='sessao' && TABS.concat(['treino']).some(t=>S.view.indexOf(t)===0)); }
 function avatarBtn(){
   const ini = (NOME||EMAIL||'?').trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase();
-  return `<button class="avatar" data-a="perfil" aria-label="Conta e fichas">${esc(ini)}</button>`;
+  return `<button class="avatar" data-a="perfil" aria-label="Conta e fichas">${AVATAR?`<img data-path="${esc(AVATAR)}" alt="">`:esc(ini)}</button>`;
 }
 
 function vCarregando(){
@@ -1177,9 +1178,15 @@ async function deletePhoto(id){
 
 /* ----- Conta e fichas ----- */
 function perfilSheet(){
-  openSheet(`<h2>${esc(NOME||'Sua conta')}</h2><p>${esc(EMAIL)}</p>
-    <label class="lbl" for="p-nome" style="margin-top:4px">Seu nome</label>
-    <div class="row"><input class="inp" id="p-nome" value="${esc(NOME)}" autocomplete="name"><button class="btn sm" data-a="p-nome-save">Salvar</button></div>
+  const ini = (NOME||EMAIL||'?').trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase();
+  openSheet(`<div class="perfil-h"><button class="avatar xl" data-a="p-foto" aria-label="Trocar foto de perfil">${AVATAR?`<img data-path="${esc(AVATAR)}" alt="Sua foto">`:esc(ini)}<span class="cam">${ICON.cam}</span></button>
+      <div><h2>${esc(NOME||'Sua conta')}</h2><p style="margin:0">${esc(EMAIL)}</p>${INSTA?`<p class="insta">@${esc(INSTA)}</p>`:''}</div></div>
+    <label class="lbl" for="p-nome">Seu nome</label>
+    <input class="inp" id="p-nome" value="${esc(NOME)}" autocomplete="name">
+    <label class="lbl" for="p-insta">Instagram (opcional)</label>
+    <div class="fld-at"><span>@</span><input class="inp" id="p-insta" value="${esc(INSTA)}" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="seuusuario"></div>
+    <p class="note">A foto e o @ aparecem nas imagens que você compartilha.</p>
+    <button class="btn" data-a="p-save" style="margin-top:10px">Salvar perfil</button>
     <div class="btns" style="margin-top:16px">
       ${FICHA?`<button class="btn" data-a="f-edit">${ICON.edit} Editar ficha atual</button><button class="btn" data-a="fichas">Trocar de ficha</button>`:''}
       <button class="btn danger" data-a="sair">Sair da conta</button>
@@ -1203,14 +1210,14 @@ function dadosSemana(ref){
   const doSemana = S.sessions.filter(s=>s.start>=wk && s.start<fim);
   const dias = SEMANA.map((wd,i)=>({ label:WD[wd][0], feito: doSemana.some(s=>sameDay(s.start, wk+i*864e5)), futuro: wk+i*864e5 > Date.now(), hoje: sameDay(wk+i*864e5, Date.now()) }));
   return { ref, data: ref ? ref.start : Date.now(), dias, nDias: dias.filter(d=>d.feito).length,
-    tempoSemana: doSemana.reduce((n,s)=>n+(s.dur||0),0), treinosSemana: doSemana.length, volSemana: doSemana.reduce((n,s)=>n+(s.vol||0),0), nome: NOME || EMAIL.split('@')[0] };
+    tempoSemana: doSemana.reduce((n,s)=>n+(s.dur||0),0), treinosSemana: doSemana.length, volSemana: doSemana.reduce((n,s)=>n+(s.vol||0),0), nome: NOME || EMAIL.split('@')[0], insta: INSTA };
 }
 function dadosMes(ref){
   const base = new Date(ref ? ref.start : Date.now());
   const ano = base.getFullYear(), mes = base.getMonth();
   const doMes = S.sessions.filter(s=>{ const d=new Date(s.start); return d.getFullYear()===ano && d.getMonth()===mes; });
   const feitos = new Set(doMes.map(s=>new Date(s.start).getDate()));
-  return { ano, mes, feitos, nDias: feitos.size, tempo: doMes.reduce((n,s)=>n+(s.dur||0),0), treinos: doMes.length, data: Date.now(), nome: NOME || EMAIL.split('@')[0] };
+  return { ano, mes, feitos, nDias: feitos.size, tempo: doMes.reduce((n,s)=>n+(s.dur||0),0), treinos: doMes.length, data: Date.now(), nome: NOME || EMAIL.split('@')[0], insta: INSTA };
 }
 async function abrirCompartilhar(tipo, ref, titulo){
   CARD.tipo = tipo; CARD.ref = ref || null; CARD.titulo = titulo || '';
@@ -1223,7 +1230,8 @@ async function abrirCompartilhar(tipo, ref, titulo){
     <a class="btn ghost" id="share-dl" download="treino.png" aria-disabled="true">Baixar imagem</a>
     <button class="btn ghost" data-a="close">Fechar</button></div>`);
   try{
-    const canvas = tipo==='mes' ? await desenharMes(dadosMes(ref)) : await desenharSemana(dadosSemana(ref));
+    const foto = await fotoParaCartao();
+    const canvas = tipo==='mes' ? await desenharMes(Object.assign(dadosMes(ref), {foto})) : await desenharSemana(Object.assign(dadosSemana(ref), {foto}));
     const blob = await new Promise(r=>canvas.toBlob(r, 'image/png'));
     if(CARD.tipo!==tipo || CARD.ref!==(ref||null)) return;
     CARD.blob = blob; CARD.url = URL.createObjectURL(blob);
@@ -1231,6 +1239,31 @@ async function abrirCompartilhar(tipo, ref, titulo){
     const dl = $('#share-dl'); if(dl){ dl.href = CARD.url; dl.download = (tipo==='mes'?'meus-treinos-mes':'meus-treinos-semana')+'.png'; dl.removeAttribute('aria-disabled'); }
     const go = $('#share-go'); if(go) go.disabled = false;
   }catch(e){ const prev = $('#cardprev'); if(prev) prev.innerHTML = '<p class="note">Não consegui gerar a imagem agora.</p>'; }
+}
+async function fotoParaCartao(){
+  if(!AVATAR) return null;
+  if(AVATAR_IMG && AVATAR_IMG.path===AVATAR) return AVATAR_IMG.img;
+  try{ const blob = await D.baixarFoto(AVATAR); const img = await createImageBitmap(blob); AVATAR_IMG = {path:AVATAR, img}; return img; }catch(e){ return null; }
+}
+async function trocarAvatar(file){
+  toast('Enviando foto…');
+  try{
+    const quadrada = await recortarQuadrado(file, 512);
+    const antigo = AVATAR;
+    AVATAR = await D.enviarAvatar(UID, quadrada, antigo);
+    AVATAR_IMG = null;
+    closeSheet(true); render(); perfilSheet(); toast('Foto de perfil atualizada.');
+  }catch(e){ toast('Não consegui enviar a foto. Tente outra imagem.', true); }
+}
+async function recortarQuadrado(blob, lado){
+  const url = URL.createObjectURL(blob);
+  try{
+    const img = await new Promise((res, rej)=>{ const i = new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url; });
+    const m = Math.min(img.naturalWidth, img.naturalHeight);
+    const c = document.createElement('canvas'); c.width = c.height = lado;
+    c.getContext('2d').drawImage(img, (img.naturalWidth-m)/2, (img.naturalHeight-m)/2, m, m, 0, 0, lado, lado);
+    return await new Promise(r=>c.toBlob(r, 'image/jpeg', 0.88));
+  } finally { URL.revokeObjectURL(url); }
 }
 async function enviarCard(){
   if(!CARD.blob) return;
@@ -1297,7 +1330,13 @@ document.addEventListener('click', async e=>{
     case 'share': { const ss = t.dataset.id ? S.sessions.find(x=>x.id===t.dataset.id) : null; abrirCompartilhar(t.dataset.t, ss); break; }
     case 'share-tab': abrirCompartilhar(t.dataset.t, CARD.ref, CARD.titulo); break;
     case 'share-go': enviarCard(); break;
-    case 'p-nome-save': { const n = $('#p-nome').value.trim(); if(!n) break; try{ await D.salvarNome(UID, n); NOME = n; closeSheet(true); render(); toast('Nome salvo.'); }catch(err){ toast('Não consegui salvar agora.', true); } break; }
+    case 'p-save': {
+      const n = $('#p-nome').value.trim(); const ig = $('#p-insta').value.trim().replace(/^@+/, '').replace(/\s+/g,'');
+      if(!n){ toast('Digite seu nome.', true); break; }
+      if(ig && !/^[A-Za-z0-9._]{1,30}$/.test(ig)){ toast('O @ do Instagram só aceita letras, números, ponto e _.', true); break; }
+      try{ await D.salvarPerfil(UID, {nome:n, instagram: ig || null}); NOME = n; INSTA = ig; closeSheet(true); render(); toast('Perfil salvo.'); }catch(err){ toast('Não consegui salvar agora.', true); }
+      break; }
+    case 'p-foto': { const f=$('#f-avatar'); f.value=''; f.click(); break; }
     case 'fichas': if(FICHA) fichasSheet(); break;
     case 'f-usar': { const id = t.dataset.id; if(S.draft){ toast('Finalize ou descarte o treino em andamento antes de trocar de ficha.', true); break; }
       try{ await D.ativarFicha(UID, id); FICHAS = FICHAS.map(f=>Object.assign({}, f, {ativa:f.id===id})); definirFicha(); closeSheet(true); go('treinos'); toast('Agora você está usando "'+FICHA.nome+'".'); }catch(err){ toast('Não consegui trocar agora.', true); } break; }
@@ -1347,6 +1386,7 @@ document.addEventListener('change', e=>{
   else if(id==='cmp-b'){ S.cmp.b = el.value; render(); }
   else if(id==='pdate' && S.pnew){ S.pnew.d = el.value || dayKey(Date.now()); }
   else if(id==='f-aval'){ const fs = Array.from(el.files||[]); if(fs.length) readAvaliacao(fs); }
+  else if(id==='f-avatar'){ const f = el.files && el.files[0]; if(f) trocarAvatar(f); }
   else if(id==='f-ficha'){ const fs = Array.from(el.files||[]); if(fs.length) readFicha(fs); }
   else if(id==='f-photo'){
     const f = el.files && el.files[0];
@@ -1369,7 +1409,7 @@ async function carregar(){
   S.view = 'carregando'; render();
   try{
     const d = await D.carregarTudo(UID);
-    NOME = d.nome || NOME;
+    NOME = d.nome || NOME; AVATAR = d.avatar; INSTA = d.instagram; AVATAR_IMG = null;
     FICHAS = d.fichas; definirFicha();
     S.pending = LS.get(kPending(), []);
     const ids = new Set(d.treinos.map(s=>s.id));
@@ -1395,7 +1435,7 @@ function entrar(user){
   carregar();
 }
 function sairLocal(){
-  UID = null; EMAIL=''; NOME=''; FICHAS=[]; FICHA=null;
+  UID = null; EMAIL=''; NOME=''; AVATAR=''; INSTA=''; AVATAR_IMG=null; FICHAS=[]; FICHA=null;
   Object.assign(S, {sessions:[], body:[], measures:[], photos:[], draft:null, pending:[], edit:null, exSel:null, mSel:null});
   stopRest(); closeSheet(true);
   S.auth='entrar'; S.authErr=''; S.authMsg='';

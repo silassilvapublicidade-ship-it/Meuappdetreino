@@ -34,7 +34,7 @@ function linhaParaFicha(r){
 
 // ---------- Carga inicial ----------
 export async function carregarTudo(uid){
-  const [perfil, fichas, treinos, peso, aval, fotos, rascunho, videos, editor, admin, avisos] = await Promise.all([
+  const [perfil, fichas, treinos, peso, aval, fotos, rascunho, videos, editor, admin, avisos, catalogo] = await Promise.all([
     sb.from('profiles').select('nome,avatar_path,instagram').eq('id', uid).maybeSingle().then(ok),
     sb.from('plans').select('*').order('created_at', { ascending: true }).then(ok),
     sb.from('sessions').select('*').order('started_at', { ascending: false }).limit(1000).then(ok),
@@ -45,7 +45,8 @@ export async function carregarTudo(uid){
     sb.from('exercise_videos').select('chave,nome,video').then(ok),
     sb.from('video_editores').select('user_id').eq('user_id', uid).then(ok),
     sb.from('app_admins').select('user_id').eq('user_id', uid).then(ok),
-    sb.from('app_avisos').select('id,texto,nivel,ativo,expira_em,created_at').order('created_at', { ascending: false }).then(ok)
+    sb.from('app_avisos').select('id,texto,nivel,ativo,expira_em,created_at').order('created_at', { ascending: false }).then(ok),
+    sb.from('exercise_catalog').select('modulo,titulo,youtube').order('modulo').order('id').range(0, 2999).then(ok).catch(() => [])
   ]);
   return {
     nome: perfil && perfil.nome || '',
@@ -60,7 +61,8 @@ export async function carregarTudo(uid){
     videos: (videos || []).map(v => ({ chave: v.chave, nome: v.nome, video: v.video })),
     editor: !!(editor && editor.length),
     admin: !!(admin && admin.length),
-    avisos: (avisos || []).map(linhaParaAviso)
+    avisos: (avisos || []).map(linhaParaAviso),
+    catalogo: catalogo || []
   };
 }
 

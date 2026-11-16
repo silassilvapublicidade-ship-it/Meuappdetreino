@@ -10,6 +10,7 @@ import {
   slug, prepararFicha, fichaParaSalvar, fichaDaLeitura, cronogramaPadrao, chutarAumento, copia, linkOk, chaveVideo
 } from './modelo.js';
 import { calcular as calcConquistas, nivel, semanasAtivas, chaveDia, NIVEIS } from './conquistas.js';
+import { prepararCatalogo, acharNoCatalogo, GRUPOS } from './catalogo.js';
 import * as D from './dados.js';
 import { desenharSemana, desenharMes } from './cartao.js';
 
@@ -86,7 +87,20 @@ function minhasConquistas(sessoes){
   return calcConquistas(sessoes || S.sessions, { meta: metaSemana(),
     avaliacoes: S.measures.map(m=>m.t || Date.parse(m.d+'T12:00')), fotos: S.photos.map(f=>Date.parse(f.d+'T12:00')) });
 }
-function videoDe(e){ const v = e && e.n ? VIDEOS[chaveVideo(e.n)] : null; return (v && v.video) || (e && e.video) || ''; }
+let CATALOGO = [];
+const autoCache = new Map();
+function videoAuto(nome){
+  if(!nome || !CATALOGO.length) return null;
+  if(!autoCache.has(nome)){ const r = acharNoCatalogo(nome); autoCache.set(nome, r ? { url:'https://www.youtube.com/watch?v='+r.item.youtube, titulo:r.item.titulo } : null); }
+  return autoCache.get(nome);
+}
+// vídeo escolhido pelo admin > link antigo da ficha > o mais parecido da biblioteca
+function videoDe(e){
+  if(!e || !e.n) return '';
+  const v = VIDEOS[chaveVideo(e.n)]; if(v && v.video) return v.video;
+  if(e.video) return e.video;
+  const a = videoAuto(e.n); return a ? a.url : '';
+}
 function videoLink(e){ const u = videoDe(e); return u ? `<a class="vlink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${ICON.play} Ver execução</a>` : ''; }
 
 function definirFicha(){
@@ -359,7 +373,7 @@ function vFicha(){
         <div class="fx-h"><span class="ex-num">${pad(i+1)}</span>
           <div class="fx-tools"><button class="mini" data-a="fx-up" data-l="${L}" data-i="${i}" aria-label="Subir"${i?'':' disabled'}>↑</button><button class="mini" data-a="fx-down" data-l="${L}" data-i="${i}" aria-label="Descer"${i<w.ex.length-1?'':' disabled'}>↓</button><button class="mini del" data-a="fx-del" data-l="${L}" data-i="${i}" aria-label="Remover exercício">×</button></div></div>
         ${bi ? e.parts.map((p,pi)=>`<div class="frow2"><input class="inp" data-e="w.${L}.ex.${i}.parts.${pi}" value="${esc(p)}" placeholder="Exercício ${pi+1} do bi-set" aria-label="Exercício ${pi+1} do bi-set"><label class="mini-f"><input class="inp sm" data-e="w.${L}.ex.${i}.inc.${pi}" inputmode="decimal" value="${esc(fmtN(e.inc[pi]))}" aria-label="Aumento de carga em kg"><span>+kg</span></label></div>`).join('')
-             : `<div class="frow2"><input class="inp" data-e="w.${L}.ex.${i}.n" value="${esc(e.n)}" placeholder="Nome do exercício" aria-label="Nome do exercício"><label class="mini-f"><input class="inp sm" data-e="w.${L}.ex.${i}.inc" inputmode="decimal" value="${esc(fmtN(e.inc))}" aria-label="Aumento de carga em kg"><span>+kg</span></label></div>`}
+             : `<div class="frow2"><input class="inp" data-e="w.${L}.ex.${i}.n" list="cat-list" autocomplete="off" value="${esc(e.n)}" placeholder="Nome do exercício" aria-label="Nome do exercício"><label class="mini-f"><input class="inp sm" data-e="w.${L}.ex.${i}.inc" inputmode="decimal" value="${esc(fmtN(e.inc))}" aria-label="Aumento de carga em kg"><span>+kg</span></label></div>`}
         <div class="fgrid">
           <label><span>Séries</span><input class="inp sm" data-e="w.${L}.ex.${i}.s" inputmode="numeric" value="${e.s}"></label>
           <label><span>Reps mín.</span><input class="inp sm" data-e="w.${L}.ex.${i}.r.0" inputmode="numeric" value="${e.r[0]}"></label>
@@ -367,7 +381,7 @@ function vFicha(){
           <label><span>Descanso (s)</span><input class="inp sm" data-e="w.${L}.ex.${i}.rest" inputmode="numeric" value="${e.rest}"></label>
         </div>
         <textarea class="notes sm" data-e="w.${L}.ex.${i}.tip" placeholder="Dica de execução (opcional)" aria-label="Dica de execução">${esc(e.tip||'')}</textarea>
-        ${EDITOR?`<label class="fld-at vid"><span>${ICON.play}</span><input class="inp sm" data-e="w.${L}.ex.${i}.video" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(e.video||'')}" placeholder="Link do vídeo de execução (opcional)" aria-label="Link do vídeo de execução"></label>`:''}
+        ${EDITOR?`<label class="fld-at vid"><span>${ICON.play}</span><input class="inp sm" data-e="w.${L}.ex.${i}.video" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(e.video||'')}" placeholder="${esc(phVideo(bi ? e.parts.filter(Boolean).join(' + ') : e.n))}" aria-label="Link do vídeo de execução"></label>`:''}
         <label class="chkline"><input type="checkbox" data-a="fx-bi" data-l="${L}" data-i="${i}"${bi?' checked':''}> Bi-set (dois exercícios sem descanso)</label>
       </div>`;
     }).join('');
@@ -389,8 +403,11 @@ function vFicha(){
       <p class="note">Se faltar um dia, o app segue a sequência dos treinos.</p></section>
     ${treinos}
     ${E.order.length<7?`<button class="btn ghost" data-a="fw-add" style="margin-top:12px">+ Treino ${LETRAS.find(x=>E.order.indexOf(x)<0)}</button>`:''}
-    <div class="btns" style="margin-top:18px"><button class="btn primary" data-a="f-save">Salvar ficha</button><button class="btn ghost" data-a="f-cancel">Cancelar</button></div>`;
+    <div class="btns" style="margin-top:18px"><button class="btn primary" data-a="f-save">Salvar ficha</button><button class="btn ghost" data-a="f-cancel">Cancelar</button></div>
+    ${datalistCatalogo()}`;
 }
+function phVideo(nome){ const a = videoAuto(nome); return a ? 'Automático: '+a.titulo : 'Sem vídeo na biblioteca: cole um link (opcional)'; }
+function datalistCatalogo(){ return `<datalist id="cat-list">${[...new Set(CATALOGO.filter(c=>c.modulo>=10).map(c=>c.titulo))].map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>`; }
 // O editor grava os links na biblioteca (vale para todos que tiverem o mesmo exercício)
 function mudancasDeVideo(itens){
   const gravar = [], apagar = [];
@@ -421,14 +438,16 @@ async function videosSheet(){
   Object.values(VIDEOS).forEach(v=>nomes.push(v.nome));
   const porChave = new Map();
   nomes.forEach(n=>{ const k = chaveVideo(n||''); if(k && !porChave.has(k)) porChave.set(k, n.trim()); });
-  const linhas = [...porChave.entries()].map(([k,n])=>({k, n, v: VIDEOS[k] ? VIDEOS[k].video : ''}))
-    .sort((a,b)=> (a.v?1:0)-(b.v?1:0) || a.n.localeCompare(b.n,'pt-BR'));
-  const sem = linhas.filter(l=>!l.v).length;
+  const linhas = [...porChave.entries()].map(([k,n])=>({k, n, v: VIDEOS[k] ? VIDEOS[k].video : '', a: videoAuto(n)}))
+    .sort((a,b)=> ((a.v||a.a)?1:0)-((b.v||b.a)?1:0) || a.n.localeCompare(b.n,'pt-BR'));
+  const sem = linhas.filter(l=>!l.v && !l.a).length, auto = linhas.filter(l=>!l.v && l.a).length;
   openSheet(`<h2>Vídeos dos exercícios</h2>
     <p>Os links valem para todo mundo: quem tiver o exercício na ficha vê o botão <b>▶ Ver execução</b>. Só você pode mudar.</p>
-    <p class="note" style="margin-top:0">${linhas.length} exercícios das fichas da família · <b>${sem}</b> sem vídeo</p>
-    <div class="vlist">${linhas.map(l=>`<label class="vrow${l.v?' tem':''}"><span>${esc(l.n)}</span>
-      <input class="inp vin" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" data-vk="${esc(l.k)}" data-vn="${esc(l.n)}" value="${esc(l.v)}" placeholder="Cole o link do vídeo"></label>`).join('')}</div>
+    <p class="note" style="margin-top:0">${linhas.length} exercícios das fichas da família · ${auto} com vídeo automático da biblioteca · <b>${sem}</b> sem vídeo</p>
+    <p class="note">Campo vazio = usa o vídeo automático. Cole um link para trocar.</p>
+    <div class="vlist">${linhas.map(l=>`<label class="vrow${l.v?' tem':l.a?' auto':''}"><span>${esc(l.n)}</span>
+      ${!l.v && l.a ? `<small class="vauto">Automático: <a href="${esc(l.a.url)}" target="_blank" rel="noopener">${esc(l.a.titulo)} ▶</a></small>` : ''}
+      <input class="inp vin" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" data-vk="${esc(l.k)}" data-vn="${esc(l.n)}" value="${esc(l.v)}" placeholder="${l.a?'Trocar o automático: cole outro link':'Cole o link do vídeo'}"></label>`).join('')}</div>
     <div class="btns" style="margin-top:14px"><button class="btn primary" data-a="v-save">Salvar vídeos</button><button class="btn ghost" data-a="close">Fechar</button></div>`);
 }
 async function salvarVideosSheet(btn){
@@ -696,6 +715,31 @@ function baixarLembretes(){
 }
 
 
+/* ----- Biblioteca de exercícios ----- */
+function bibliotecaSheet(){
+  openSheet(`<h2>Biblioteca de exercícios</h2><p>${CATALOGO.length} vídeos de execução. Os exercícios das fichas usam esta biblioteca automaticamente.</p>
+    <input class="inp" id="bib-q" type="search" autocomplete="off" placeholder="Buscar: supino, rosca, agachamento…" aria-label="Buscar exercício">
+    <div class="seg bib-g" id="bib-g" role="tablist">${[['','Todos'],['m','Musculação'],['c','Core'],['o','Outros']].map(([k,l])=>`<button role="tab" aria-selected="${(S.bibG||'m')===k}" data-a="bib-g" data-g="${k}">${l}</button>`).join('')}</div>
+    <div class="blib" id="bib-res"></div>
+    <div class="btns" style="margin-top:12px"><button class="btn ghost" data-a="close">Fechar</button></div>`);
+  filtrarBiblioteca();
+}
+function filtrarBiblioteca(){
+  const box = $('#bib-res'); if(!box) return;
+  const q = ($('#bib-q') && $('#bib-q').value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const g = S.bibG==null ? 'm' : S.bibG;
+  const okG = m => g==='' || (g==='m' ? (m>=14 && m<=19) : g==='c' ? m===10 : (m<10 || m===11 || m===12 || m===13));
+  const termos = q.split(/\s+/).filter(Boolean);
+  const res = CATALOGO.filter(c=>okG(c.modulo) && termos.every(t=>c.titulo.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(t)));
+  let html = '', grupo = null;
+  res.slice(0, 120).forEach(c=>{
+    if(c.modulo!==grupo){ grupo = c.modulo; html += `<h3 class="h3">${esc(GRUPOS[c.modulo]||'')}</h3>`; }
+    html += `<a class="bib-i" href="https://www.youtube.com/watch?v=${esc(c.youtube)}" target="_blank" rel="noopener noreferrer"><span>${esc(c.titulo)}</span><span class="pl" aria-hidden="true">${ICON.play}</span></a>`;
+  });
+  box.innerHTML = html || '<p class="note">Nenhum exercício encontrado.</p>';
+  if(res.length>120) box.insertAdjacentHTML('beforeend', `<p class="note">Mostrando 120 de ${res.length}. Refine a busca.</p>`);
+}
+
 /* ----- Avisos do admin (tela Hoje) ----- */
 const kAvisosVistos = ()=>'mt.avisos.'+UID;
 const AV_ICO = { info:'📣', alerta:'⚠️', festa:'🎉' };
@@ -896,7 +940,8 @@ function vTreinos(){
     <ol class="sched-list">${rows}</ol>
     <p class="note">Se faltar um dia, siga a sequência ${FICHA.order.join(' → ')}.</p></section>
     <div class="wlist">${cards}</div>
-    <div class="btns two" style="margin-top:14px"><button class="btn sm ghost" data-a="fichas">Trocar de ficha</button><button class="btn sm ghost" data-a="go" data-v="onboarding">+ Nova ficha</button></div>`;
+    <div class="btns two" style="margin-top:14px"><button class="btn sm ghost" data-a="fichas">Trocar de ficha</button><button class="btn sm ghost" data-a="go" data-v="onboarding">+ Nova ficha</button></div>
+    ${CATALOGO.length?`<button class="gcta" data-a="biblioteca" style="margin-top:12px"><span class="ci">${ICON.play}</span><span><b>Biblioteca de exercícios</b><small>${CATALOGO.length} vídeos de execução para consultar</small></span><span class="chev" aria-hidden="true">›</span></button>`:''}`;
 }
 function vTreino(L){
   const W = FICHA && FICHA.W[L]; if(!W) return vTreinos();
@@ -1317,7 +1362,7 @@ function refreshCard(i){ const card = $('#ex-'+i); if(card){ const tmp = documen
 function swapSheet(i){
   const d = S.draft, e = d.w.ex[i], base = e.orig || e;
   const N = nomeDeChave();
-  const nomes = [...new Set(Object.values(N))].filter(n=>n && slug(n)!==e.key).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const nomes = [...new Set(Object.values(N).concat(CATALOGO.filter(c=>c.modulo>=10).map(c=>c.titulo)))].filter(n=>n && slug(n)!==e.key).sort((a,b)=>a.localeCompare(b,'pt-BR'));
   const feitas = d.ex[i].sets.filter(st=>st.done).length;
   openSheet(`<h2>Trocar exercício</h2><p>Aparelho ocupado ou com problema? A troca vale só para este treino. A ficha continua igual.</p>
     <p class="note" style="margin-top:0">Na ficha: <b>${esc(base.n)}</b></p>
@@ -1771,6 +1816,8 @@ document.addEventListener('click', async e=>{
     case 'lembretes': closeSheet(true); if(FICHA) lembretesSheet(); break;
     case 'lem-go': baixarLembretes(); break;
     case 'videos': closeSheet(true); if(EDITOR) videosSheet(); break;
+    case 'biblioteca': bibliotecaSheet(); break;
+    case 'bib-g': S.bibG = t.dataset.g; document.querySelectorAll('#bib-g button').forEach(b=>b.setAttribute('aria-selected', String(b===t))); filtrarBiblioteca(); break;
     case 'aviso-x': { const vistos = LS.get(kAvisosVistos(), []); vistos.push(t.dataset.id); LS.set(kAvisosVistos(), vistos.slice(-50)); const c = t.closest('.aviso'); if(c) c.remove(); break; }
     case 'adm-tab': S.admTab = t.dataset.t; ['usuariosErr','avisosErr','errosErr'].forEach(k=>{ S.adm[k] = false; }); render(); break;
     case 'adm-check': S.adm = {}; render(); carregarAdmin(true); break;
@@ -1870,6 +1917,7 @@ document.addEventListener('click', async e=>{
 });
 document.addEventListener('input', e=>{
   const el = e.target;
+  if(el.id==='bib-q'){ filtrarBiblioteca(); return; }
   if(el.id==='cmp-range'){ const v=+el.value; const a=$('#cmp-img-a'), d=$('#cmp-div'); if(a) a.style.clipPath='inset(0 '+(100-v)+'% 0 0)'; if(d) d.style.left=v+'%'; return; }
   if(el.dataset && el.dataset.e && S.edit && el.tagName!=='SELECT'){ editInput(el); return; }
   const f = el.dataset && el.dataset.f; if(!f || !S.draft) return;
@@ -1926,6 +1974,7 @@ async function carregar(silencioso){
   try{
     NOME = d.nome || NOME; AVATAR = d.avatar; INSTA = d.instagram; AVATAR_IMG = null;
     FICHAS = d.fichas; definirFicha();
+    CATALOGO = d.catalogo || []; prepararCatalogo(CATALOGO); autoCache.clear();
     VIDEOS = {}; (d.videos||[]).forEach(v=>{ VIDEOS[v.chave] = {nome:v.nome, video:v.video}; }); EDITOR = !!(d.editor || d.admin); ADMIN = !!d.admin; AVISOS = d.avisos || [];
     S.pending = LS.get(kPending(), []);
     const ids = new Set(d.treinos.map(s=>s.id));

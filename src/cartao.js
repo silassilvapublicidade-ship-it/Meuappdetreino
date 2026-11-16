@@ -269,3 +269,55 @@ export async function desenharMes(d){
   perfil(x, d, 1592);
   return c;
 }
+
+/* ---------- conquista / nível ---------- */
+const EMOJI = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+function quebrar(x, txt, larg){
+  const palavras = String(txt||'').split(/\s+/), linhas = []; let atual = '';
+  palavras.forEach(p=>{ const t = atual ? atual+' '+p : p; if(x.measureText(t).width > larg && atual){ linhas.push(atual); atual = p; } else atual = t; });
+  if(atual) linhas.push(atual); return linhas;
+}
+function medalha(x, cx, cy, R, d){
+  x.save();
+  // raios de luz
+  x.translate(cx, cy);
+  for(let i=0;i<24;i++){ x.rotate(Math.PI/12); const g = x.createLinearGradient(0,0,0,-R*1.9); g.addColorStop(0,'rgba(255,210,92,.20)'); g.addColorStop(1,'rgba(255,210,92,0)');
+    x.fillStyle = g; x.beginPath(); x.moveTo(-14,0); x.lineTo(0,-R*1.9); x.lineTo(14,0); x.closePath(); x.fill(); }
+  x.restore();
+  x.save(); x.shadowColor = 'rgba(255,196,70,.55)'; x.shadowBlur = 70;
+  const anel = x.createLinearGradient(cx-R, cy-R, cx+R, cy+R); anel.addColorStop(0,'#ffe28a'); anel.addColorStop(.5,'#ffb43c'); anel.addColorStop(1,'#ffe9a8');
+  x.fillStyle = anel; x.beginPath(); x.arc(cx, cy, R, 0, Math.PI*2); x.fill(); x.restore();
+  const dentro = x.createRadialGradient(cx, cy-R*0.3, R*0.1, cx, cy, R*0.86); dentro.addColorStop(0,'#16323d'); dentro.addColorStop(1,'#071219');
+  x.fillStyle = dentro; x.beginPath(); x.arc(cx, cy, R*0.86, 0, Math.PI*2); x.fill();
+  x.lineWidth = 4; x.strokeStyle = 'rgba(255,226,138,.55)'; x.beginPath(); x.arc(cx, cy, R*0.80, 0, Math.PI*2); x.stroke();
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  if(d.nivel){
+    x.font = `400 ${R*1.05}px ${DISPLAY}`; x.fillStyle = '#ffd25c'; x.fillText(String(d.nivelNum||''), cx, cy+R*0.06);
+  } else {
+    x.font = `${Math.round(R*0.95)}px ${EMOJI}`; x.fillStyle = '#fff'; x.fillText(d.ico || '🏆', cx, cy+R*0.04);
+  }
+  x.textBaseline = 'alphabetic';
+  // estrelinhas
+  x.fillStyle = '#ffd25c'; [[-1.25,-0.55,16],[1.3,-0.35,12],[1.05,0.9,10],[-1.1,0.95,13]].forEach(([a,b,r])=>estrela(x, cx+a*R, cy+b*R, r));
+}
+export async function desenharConquista(d){
+  await fontes();
+  const [c, x] = base();
+  equipamento(x);
+  marca(x, d.data);
+  rotulo(x, d.nivel ? 'NOVO NÍVEL ALCANÇADO' : 'CONQUISTA DESBLOQUEADA', 400, '#ffd25c');
+  medalha(x, W/2, 700, 210, d);
+  x.textAlign = 'center';
+  let tam = 150; x.font = `400 ${tam}px ${DISPLAY}`;
+  const titulo = String(d.titulo||'').toUpperCase();
+  while(x.measureText(titulo).width > W-140 && tam > 80){ tam -= 6; x.font = `400 ${tam}px ${DISPLAY}`; }
+  x.save(); x.shadowColor = 'rgba(255,196,70,.35)'; x.shadowBlur = 30; x.fillStyle = COR.ink; x.fillText(titulo, W/2, 1080); x.restore();
+  x.font = `600 38px ${BODY}`; x.fillStyle = COR.muted;
+  quebrar(x, d.desc, W-200).slice(0,2).forEach((l,i)=>x.fillText(l, W/2, 1150 + i*50));
+  const nDesc = Math.min(2, quebrar(x, d.desc, W-200).length);
+  x.textAlign = 'center'; x.font = `700 28px ${BODY}`; x.fillStyle = '#ffd25c';
+  espacado(x, (d.nivel ? 'ALCANÇADO EM ' : 'CONQUISTADA EM ') + dataBR(d.data), W/2, 1150 + nDesc*50 + 30, 4);
+  stats(x, [[d.feitas+'/'+d.total, 'CONQUISTAS'], [String(d.nivelNome||'').toUpperCase(), 'NÍVEL'], [String(d.treinos), d.treinos===1?'TREINO':'TREINOS']], 1300);
+  perfil(x, d, 1610);
+  return c;
+}

@@ -12,7 +12,7 @@ import {
 import { calcular as calcConquistas, nivel, semanasAtivas, chaveDia, NIVEIS } from './conquistas.js';
 import { prepararCatalogo, acharNoCatalogo, GRUPOS } from './catalogo.js';
 import * as D from './dados.js';
-import { desenharSemana, desenharMes } from './cartao.js';
+import { desenharSemana, desenharMes, desenharConquista } from './cartao.js';
 
 /* ---------- Utilidades ---------- */
 function keyOf(s){ return slug(s).replace(/-/g,'_').slice(0,40); }
@@ -1369,9 +1369,9 @@ function evoConquistas(){
   const C = minhasConquistas(), nv = nivel(S.sessions.length), sem = semanasAtivas(S.sessions.map(s=>chaveDia(s.start)));
   const feitas = C.filter(c=>c.at).sort((a,b)=>b.at-a.at), falta = C.filter(c=>!c.at).sort((a,b)=>(b.prog[0]/b.prog[1])-(a.prog[0]/a.prog[1]));
   const prog = c=> c.tipo==='vol' ? fmtN(c.prog[0]/1000,1)+' de '+fmtN(c.prog[1]/1000,0)+' t' : c.prog[0]+' de '+c.prog[1];
-  const badge = c=>`<div class="badge${c.at?' on':''}"><span class="b-ico" aria-hidden="true">${c.ico}</span><b>${esc(c.nome)}</b>
+  const badge = c=>`<${c.at?`button data-a="share-cq" data-id="${esc(c.id)}"`:'div'} class="badge${c.at?' on':''}"><span class="b-ico" aria-hidden="true">${c.ico}</span><b>${esc(c.nome)}</b>
     <small>${c.at ? 'Conquistado em '+shortDay(chaveDia(c.at)) : esc(c.desc)}</small>
-    ${!c.at && c.prog[1]>1 ? `<span class="bar sm" aria-hidden="true"><i style="width:${Math.round(c.prog[0]/c.prog[1]*100)}%"></i></span><small class="pg">${prog(c)}</small>` : ''}</div>`;
+    ${!c.at && c.prog[1]>1 ? `<span class="bar sm" aria-hidden="true"><i style="width:${Math.round(c.prog[0]/c.prog[1]*100)}%"></i></span><small class="pg">${prog(c)}</small>` : ''}${c.at?`<span class="b-sh">${ICON.share} Compartilhar</span>`:''}</${c.at?'button':'div'}>`;
   const degraus = NIVEIS.map(([n,nome],i)=>`<span class="step${i<=nv.i?' on':''}${i===nv.i?' cur':''}"><b>${esc(nome)}</b><small>${n}</small></span>`).join('');
   return `<section class="card lvlcard">
       <div class="lvl-big"><span class="lv-n" aria-hidden="true">${nv.i+1}</span><div><small>Nível</small><b>${esc(nv.nome)}</b></div>
@@ -1379,7 +1379,8 @@ function evoConquistas(){
       <span class="bar"><i style="width:${Math.round(nv.pct*100)}%"></i></span>
       <p class="note">${nv.prox ? `${nv.n} ${nv.n===1?'treino':'treinos'} · faltam <b>${nv.prox.n-nv.n}</b> para o nível <b>${esc(nv.prox.nome)}</b>` : `${nv.n} treinos · nível máximo!`}</p>
       <div class="steps" aria-label="Níveis por número de treinos">${degraus}</div>
-      <p class="note">Semana ativa = 3 ou mais dias de treino. A sequência continua enquanto nenhuma semana fechar abaixo disso.</p></section>
+      <p class="note">Semana ativa = 3 ou mais dias de treino. A sequência continua enquanto nenhuma semana fechar abaixo disso.</p>
+      ${nv.i>0?`<button class="btn sm" data-a="share-nv" style="margin-top:12px">${ICON.share} Compartilhar meu nível</button>`:''}</section>
     <h2 class="h2" style="margin:18px 2px 10px">Conquistadas · ${feitas.length} de ${C.length}</h2>
     ${feitas.length ? `<div class="badges">${feitas.map(badge).join('')}</div>` : '<div class="empty"><b>Nenhuma ainda</b>Finalize seu primeiro treino para ganhar a primeira.</div>'}
     <h2 class="h2" style="margin:18px 2px 10px">Próximas</h2>
@@ -1752,7 +1753,7 @@ function registrarSessao(s){
   const novas = minhasConquistas().filter(c=>c.at && !antes.has(c.id));
   const nv1 = nivel(S.sessions.length);
   const extra = (nv1.i>nv0.i ? ' Subiu para o nível '+nv1.nome+'!' : '') + (novas.length ? ' Nova conquista: '+novas.map(c=>c.ico+' '+c.nome).join(', ')+'.' : '');
-  const selo = novas.length ? novas[novas.length-1].nome : (nv1.i>nv0.i ? 'Nível '+nv1.nome : null);
+  const selo = novas.length ? novas[novas.length-1] : (nv1.i>nv0.i ? conquistaNivel(nv1) : null);
   return { extra, selo };
 }
 async function saveSession(){
@@ -1769,7 +1770,7 @@ async function saveSession(){
   const nv0 = nivel(S.sessions.length-1), nv1 = nivel(S.sessions.length);
   const extra = (nv1.i>nv0.i ? ' Subiu para o nível '+nv1.nome+'!' : '') + (novas.length ? ' Nova conquista: '+novas.map(c=>c.ico+' '+c.nome).join(', ')+'.' : '');
   abrirCompartilhar('semana', s, 'Treino '+L+' salvo! Próximo: Treino '+nx+'.'+(prs.length?' '+prs.length+(prs.length>1?' recordes':' recorde')+' hoje.':'')+extra,
-    novas.length ? novas[novas.length-1].nome : (nv1.i>nv0.i ? 'Nível '+nv1.nome : null));
+    novas.length ? novas[novas.length-1] : (nv1.i>nv0.i ? conquistaNivel(nv1) : null));
   await enviarPendentes();
 }
 async function enviarPendentes(){
@@ -2059,6 +2060,12 @@ function fichasSheet(){
 
 /* ---------- Compartilhar (imagem da semana ou do mês) ---------- */
 const CARD = { tipo:'semana', ref:null, titulo:'', conquista:null, blob:null, url:null };
+function conquistaNivel(nv){ return { nivel:true, ico:'⭐', nome:'Nível '+nv.nome, desc: nv.n+' treinos'+(nv.prox?' · próximo: '+nv.prox.nome+' ('+nv.prox.n+')':''), at: Date.now(), nv }; }
+function dadosConquista(c){
+  const C = minhasConquistas(), nv = c.nv || nivel(S.sessions.length);
+  return { titulo: c.nome, desc: c.desc, ico: c.ico, nivel: !!c.nivel, nivelNum: nv.i+1, nivelNome: nv.nome, data: c.at || Date.now(),
+    feitas: C.filter(x=>x.at).length, total: C.length, treinos: S.sessions.length, nome: NOME || EMAIL.split('@')[0], insta: INSTA };
+}
 function dadosSemana(ref){
   const base = ref ? ref.start : Date.now();
   const wk = startOfWeek(base), fim = wk + 7*864e5;
@@ -2078,7 +2085,8 @@ async function abrirCompartilhar(tipo, ref, titulo, conquista){
   CARD.tipo = tipo; CARD.ref = ref || null; CARD.titulo = titulo || ''; CARD.conquista = conquista || null;
   if(CARD.url){ try{ URL.revokeObjectURL(CARD.url); }catch(e){} CARD.url = null; }
   CARD.blob = null;
-  const tabs = `<div class="seg two" role="tablist"><button role="tab" aria-selected="${tipo==='semana'}" data-a="share-tab" data-t="semana">Semana</button><button role="tab" aria-selected="${tipo==='mes'}" data-a="share-tab" data-t="mes">Mês</button></div>`;
+  const op = [['semana','Semana'],['mes','Mês']].concat(CARD.conquista ? [['conquista', CARD.conquista.nivel ? 'Nível' : 'Conquista']] : []);
+  const tabs = `<div class="seg ${op.length===3?'tres':'two'}" role="tablist">${op.map(([k,l])=>`<button role="tab" aria-selected="${tipo===k}" data-a="share-tab" data-t="${k}">${l}</button>`).join('')}</div>`;
   openSheet(`<h2>${esc(titulo || 'Compartilhar')}</h2><p>Imagem pronta para o story ou o WhatsApp.</p>${tabs}
     <div class="cardprev" id="cardprev"><div class="spin" aria-hidden="true"></div></div>
     <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="share-go" id="share-go" disabled>${ICON.share} Compartilhar</button>
@@ -2086,12 +2094,13 @@ async function abrirCompartilhar(tipo, ref, titulo, conquista){
     <button class="btn ghost" data-a="close">Fechar</button></div>`);
   try{
     const foto = await fotoParaCartao();
-    const canvas = tipo==='mes' ? await desenharMes(Object.assign(dadosMes(ref), {foto})) : await desenharSemana(Object.assign(dadosSemana(ref), {foto, conquista: ref ? CARD.conquista : null}));
+    const canvas = tipo==='conquista' && CARD.conquista ? await desenharConquista(Object.assign(dadosConquista(CARD.conquista), {foto}))
+      : tipo==='mes' ? await desenharMes(Object.assign(dadosMes(ref), {foto})) : await desenharSemana(Object.assign(dadosSemana(ref), {foto, conquista: ref && CARD.conquista ? CARD.conquista.nome : null}));
     const blob = await new Promise(r=>canvas.toBlob(r, 'image/png'));
     if(CARD.tipo!==tipo || CARD.ref!==(ref||null)) return;
     CARD.blob = blob; CARD.url = URL.createObjectURL(blob);
     const prev = $('#cardprev'); if(prev) prev.innerHTML = `<img src="${CARD.url}" alt="Imagem para compartilhar">`;
-    const dl = $('#share-dl'); if(dl){ dl.href = CARD.url; dl.download = (tipo==='mes'?'meus-treinos-mes':'meus-treinos-semana')+'.png'; dl.removeAttribute('aria-disabled'); }
+    const dl = $('#share-dl'); if(dl){ dl.href = CARD.url; dl.download = 'meus-treinos-'+tipo+'.png'; dl.removeAttribute('aria-disabled'); }
     const go = $('#share-go'); if(go) go.disabled = false;
   }catch(e){ const prev = $('#cardprev'); if(prev) prev.innerHTML = '<p class="note">Não consegui gerar a imagem agora.</p>'; }
 }
@@ -2122,7 +2131,7 @@ async function recortarQuadrado(blob, lado){
 }
 async function enviarCard(){
   if(!CARD.blob) return;
-  const file = new File([CARD.blob], (CARD.tipo==='mes'?'meus-treinos-mes':'meus-treinos-semana')+'.png', {type:'image/png'});
+  const file = new File([CARD.blob], 'meus-treinos-'+CARD.tipo+'.png', {type:'image/png'});
   try{
     if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file]}); return; }
   }catch(e){ if(e && e.name==='AbortError') return; }
@@ -2234,9 +2243,11 @@ document.addEventListener('click', async e=>{
     case 'perfil': perfilSheet(); break;
     case 'share': { const ss = t.dataset.id ? S.sessions.find(x=>x.id===t.dataset.id) : null;
       const cq = ss ? minhasConquistas().filter(c=>c.at===ss.start).pop() : null;
-      abrirCompartilhar(t.dataset.t, ss, null, cq ? cq.nome : null); break; }
+      abrirCompartilhar(t.dataset.t, ss, null, cq || null); break; }
     case 'share-tab': abrirCompartilhar(t.dataset.t, CARD.ref, CARD.titulo, CARD.conquista); break;
     case 'share-go': enviarCard(); break;
+    case 'share-cq': { const c = minhasConquistas().find(x=>x.id===t.dataset.id); if(c && c.at) abrirCompartilhar('conquista', null, c.ico+' '+c.nome, c); break; }
+    case 'share-nv': { const c = conquistaNivel(nivel(S.sessions.length)); abrirCompartilhar('conquista', null, 'Nível '+c.nv.nome, c); break; }
     case 'p-save': {
       const n = $('#p-nome').value.trim(); const ig = $('#p-insta').value.trim().replace(/^@+/, '').replace(/\s+/g,'');
       if(!n){ toast('Digite seu nome.', true); break; }

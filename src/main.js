@@ -101,7 +101,32 @@ function videoDe(e){
   if(e.video) return e.video;
   const a = videoAuto(e.n); return a ? a.url : '';
 }
-function videoLink(e){ const u = videoDe(e); return u ? `<a class="vlink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${ICON.play} Ver execução</a>` : ''; }
+function videoLink(e){ const u = videoDe(e); return u ? `<a class="vlink" href="${esc(u)}" data-video="1" data-t="${esc(e.n)}" target="_blank" rel="noopener noreferrer">${ICON.play} Ver execução</a>` : ''; }
+// Vídeo dentro do app (player do YouTube embutido); outros links abrem fora
+function idYoutube(u){
+  try{
+    const x = new URL(u), h = x.hostname.replace(/^www\.|^m\./,'');
+    let id = null;
+    if(h==='youtu.be') id = x.pathname.slice(1);
+    else if(/youtube(-nocookie)?\.com$/.test(h)) id = x.searchParams.get('v') || (x.pathname.match(/\/(embed|shorts|live)\/([^/?#]+)/)||[])[2];
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+  }catch(e){ return null; }
+}
+function abrirVideo(url, titulo, deBiblioteca){
+  const id = idYoutube(url);
+  if(!id){ window.open(url, '_blank', 'noopener'); return; }
+  const src = 'https://www.youtube-nocookie.com/embed/'+id+'?autoplay=1&playsinline=1&rel=0&modestbranding=1';
+  openSheet(`<h2 class="pl-t">${esc(titulo||'Execução')}</h2>
+    <div class="player">${navigator.onLine ? `<iframe src="${src}" title="${esc(titulo||'Vídeo de execução')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>` : '<p class="note">Sem internet: o vídeo abre quando a conexão voltar.</p>'}</div>
+    <div class="btns" style="margin-top:12px">${deBiblioteca?'<button class="btn" data-a="biblioteca">Voltar à biblioteca</button>':''}<button class="btn ghost" data-a="close">Fechar</button></div>
+    <p class="note" style="text-align:center"><a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener noreferrer" class="link">Abrir no YouTube</a></p>`);
+}
+document.addEventListener('click', e=>{
+  const a = e.target.closest && e.target.closest('a[data-video]');
+  if(!a || !idYoutube(a.href)) return;
+  e.preventDefault(); e.stopPropagation();
+  abrirVideo(a.href, a.dataset.t, !!a.closest('#bib-res'));
+}, true);
 
 function definirFicha(){
   const ativa = FICHAS.find(f=>f.ativa) || FICHAS[FICHAS.length-1] || null;
@@ -734,7 +759,7 @@ function filtrarBiblioteca(){
   let html = '', grupo = null;
   res.slice(0, 120).forEach(c=>{
     if(c.modulo!==grupo){ grupo = c.modulo; html += `<h3 class="h3">${esc(GRUPOS[c.modulo]||'')}</h3>`; }
-    html += `<a class="bib-i" href="https://www.youtube.com/watch?v=${esc(c.youtube)}" target="_blank" rel="noopener noreferrer"><span>${esc(c.titulo)}</span><span class="pl" aria-hidden="true">${ICON.play}</span></a>`;
+    html += `<a class="bib-i" href="https://www.youtube.com/watch?v=${esc(c.youtube)}" data-video="1" data-t="${esc(c.titulo)}" target="_blank" rel="noopener noreferrer"><span>${esc(c.titulo)}</span><span class="pl" aria-hidden="true">${ICON.play}</span></a>`;
   });
   box.innerHTML = html || '<p class="note">Nenhum exercício encontrado.</p>';
   if(res.length>120) box.insertAdjacentHTML('beforeend', `<p class="note">Mostrando 120 de ${res.length}. Refine a busca.</p>`);

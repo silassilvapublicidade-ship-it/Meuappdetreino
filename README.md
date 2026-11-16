@@ -19,7 +19,7 @@ supabase/functions/ler-documento/   lê avaliação física ou ficha (fotos/PDF)
 
 ## Supabase
 
-- Projeto: `meus-treinos` (`jnjkuesvjuvnobizrhys`, região São Paulo).
+- Projeto: `fiewzckxrqaprybzynoc`.
 - Cada tabela tem RLS: cada usuário só lê e grava as próprias linhas. Fotos ficam no bucket privado `fotos`, numa pasta por usuário.
 - `.env.production` traz a URL e a chave **publicável** do projeto. Ela é feita para ficar no navegador; quem protege os dados são as regras do banco.
 

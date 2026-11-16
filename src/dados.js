@@ -34,14 +34,16 @@ function linhaParaFicha(r){
 
 // ---------- Carga inicial ----------
 export async function carregarTudo(uid){
-  const [perfil, fichas, treinos, peso, aval, fotos, rascunho] = await Promise.all([
+  const [perfil, fichas, treinos, peso, aval, fotos, rascunho, videos, editor] = await Promise.all([
     sb.from('profiles').select('nome,avatar_path,instagram').eq('id', uid).maybeSingle().then(ok),
     sb.from('plans').select('*').order('created_at', { ascending: true }).then(ok),
     sb.from('sessions').select('*').order('started_at', { ascending: false }).limit(1000).then(ok),
     sb.from('body_weights').select('d,kg').order('d', { ascending: true }).then(ok),
     sb.from('assessments').select('id,d,src,items,created_at').order('d', { ascending: true }).then(ok),
     sb.from('photos').select('id,d,pose,path').order('d', { ascending: true }).then(ok),
-    sb.from('drafts').select('data,updated_at').eq('user_id', uid).maybeSingle().then(ok)
+    sb.from('drafts').select('data,updated_at').eq('user_id', uid).maybeSingle().then(ok),
+    sb.from('exercise_videos').select('chave,nome,video').then(ok),
+    sb.from('video_editores').select('user_id').eq('user_id', uid).then(ok)
   ]);
   return {
     nome: perfil && perfil.nome || '',
@@ -52,7 +54,9 @@ export async function carregarTudo(uid){
     peso: (peso || []).map(p => ({ d: p.d, kg: Number(p.kg) })),
     avaliacoes: (aval || []).map(a => ({ id: a.id, d: a.d, src: a.src, items: a.items || [], t: Date.parse(a.created_at) })),
     fotos: (fotos || []).map(f => ({ id: f.id, d: f.d, pose: f.pose, path: f.path })),
-    rascunho: rascunho ? rascunho.data : null
+    rascunho: rascunho ? rascunho.data : null,
+    videos: (videos || []).map(v => ({ chave: v.chave, nome: v.nome, video: v.video })),
+    editor: !!(editor && editor.length)
   };
 }
 
@@ -180,4 +184,13 @@ export async function resumoGrupo(id){
   const { data, error } = await sb.rpc('grupo_resumo', { p_grupo: id });
   if(error) throw erroRpc(error);
   return (data || []).map(m => ({ uid: m.user_id, nome: m.nome || '', avatar: m.avatar_path || '', insta: m.instagram || '', dias: (m.dias || []).map(String) }));
+}
+
+// ---------- Vídeos dos exercícios (só o editor grava) ----------
+export async function salvarVideos(lista){ if(lista.length) ok(await sb.from('exercise_videos').upsert(lista.map(v => ({ chave: v.chave, nome: v.nome, video: v.video, updated_at: new Date().toISOString() })), { onConflict: 'chave' })); }
+export async function apagarVideos(chaves){ if(chaves.length) ok(await sb.from('exercise_videos').delete().in('chave', chaves)); }
+export async function exerciciosDaFamilia(){
+  const { data, error } = await sb.rpc('exercicios_da_familia');
+  if(error) throw error;
+  return (data || []).map(r => r.nome).filter(Boolean);
 }

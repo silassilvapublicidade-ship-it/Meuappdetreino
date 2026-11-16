@@ -7,7 +7,7 @@ import '@fontsource/bebas-neue/400.css';
 import './style.css';
 import {
   LETRAS, DIAS, SEMANA, WD, FICHA_MODELO, MKEYS, MORDER, MHEAD, MMANUAL, POSES,
-  slug, prepararFicha, fichaParaSalvar, fichaDaLeitura, cronogramaPadrao, chutarAumento, copia, linkOk
+  slug, prepararFicha, fichaParaSalvar, fichaDaLeitura, cronogramaPadrao, chutarAumento, copia, linkOk, chaveVideo
 } from './modelo.js';
 import { calcular as calcConquistas, nivel, semanasAtivas, chaveDia, NIVEIS } from './conquistas.js';
 import * as D from './dados.js';
@@ -65,6 +65,8 @@ let UID = null, EMAIL = '', NOME = '', AVATAR = '', INSTA = '';
 let AVATAR_IMG = null; // imagem já baixada para os cartões
 let FICHAS = [];          // fichas do usuário (como vêm do banco)
 let FICHA = null;         // ficha ativa preparada: {id, nome, order, W, sched}
+let VIDEOS = {};          // biblioteca de vídeos: chave do exercício -> {nome, video}
+let EDITOR = false;       // só o editor (Silas) cadastra os links de vídeo
 const S = {
   view:'carregando', auth:'entrar', authMsg:'', authErr:'',
   sessions:[], body:[], measures:[], photos:[], draft:null, pending:[],
@@ -79,7 +81,8 @@ function minhasConquistas(sessoes){
   return calcConquistas(sessoes || S.sessions, { meta: metaSemana(),
     avaliacoes: S.measures.map(m=>m.t || Date.parse(m.d+'T12:00')), fotos: S.photos.map(f=>Date.parse(f.d+'T12:00')) });
 }
-function videoLink(e){ return e.video ? `<a class="vlink" href="${esc(e.video)}" target="_blank" rel="noopener noreferrer">${ICON.play} Ver execução</a>` : ''; }
+function videoDe(e){ const v = e && e.n ? VIDEOS[chaveVideo(e.n)] : null; return (v && v.video) || (e && e.video) || ''; }
+function videoLink(e){ const u = videoDe(e); return u ? `<a class="vlink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${ICON.play} Ver execução</a>` : ''; }
 
 function definirFicha(){
   const ativa = FICHAS.find(f=>f.ativa) || FICHAS[FICHAS.length-1] || null;
@@ -327,6 +330,8 @@ function abrirEditor(f, back){
     if(Array.isArray(e.parts) && e.parts.filter(Boolean).length>1){ e.parts = e.parts.slice(0,3); e.inc = Array.isArray(e.inc) ? e.inc : e.parts.map(()=>Number(e.inc)||0); }
     else { e.parts = null; e.inc = Array.isArray(e.inc) ? (Number(e.inc[0])||0) : (e.inc==null ? chutarAumento(e.n) : Number(e.inc)||0); }
     e.r = Array.isArray(e.r) ? e.r : [10,12];
+    const nomeV = Array.isArray(e.parts) ? e.parts.filter(Boolean).join(' + ') : e.n;
+    e.video = (nomeV && VIDEOS[chaveVideo(nomeV)] ? VIDEOS[chaveVideo(nomeV)].video : '') || e.video || '';
   }); });
   S.editBack = back || 'treinos';
   go('ficha');
@@ -356,7 +361,7 @@ function vFicha(){
           <label><span>Descanso (s)</span><input class="inp sm" data-e="w.${L}.ex.${i}.rest" inputmode="numeric" value="${e.rest}"></label>
         </div>
         <textarea class="notes sm" data-e="w.${L}.ex.${i}.tip" placeholder="Dica de execução (opcional)" aria-label="Dica de execução">${esc(e.tip||'')}</textarea>
-        <label class="fld-at vid"><span>${ICON.play}</span><input class="inp sm" data-e="w.${L}.ex.${i}.video" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(e.video||'')}" placeholder="Link do vídeo de execução (opcional)" aria-label="Link do vídeo de execução"></label>
+        ${EDITOR?`<label class="fld-at vid"><span>${ICON.play}</span><input class="inp sm" data-e="w.${L}.ex.${i}.video" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(e.video||'')}" placeholder="Link do vídeo de execução (opcional)" aria-label="Link do vídeo de execução"></label>`:''}
         <label class="chkline"><input type="checkbox" data-a="fx-bi" data-l="${L}" data-i="${i}"${bi?' checked':''}> Bi-set (dois exercícios sem descanso)</label>
       </div>`;
     }).join('');
@@ -380,6 +385,56 @@ function vFicha(){
     ${E.order.length<7?`<button class="btn ghost" data-a="fw-add" style="margin-top:12px">+ Treino ${LETRAS.find(x=>E.order.indexOf(x)<0)}</button>`:''}
     <div class="btns" style="margin-top:18px"><button class="btn primary" data-a="f-save">Salvar ficha</button><button class="btn ghost" data-a="f-cancel">Cancelar</button></div>`;
 }
+// O editor grava os links na biblioteca (vale para todos que tiverem o mesmo exercício)
+function mudancasDeVideo(itens){
+  const gravar = [], apagar = [];
+  itens.forEach(({nome, video})=>{
+    const k = chaveVideo(nome||''); if(!k) return;
+    const v = linkOk(video), atual = VIDEOS[k];
+    if(v && (!atual || atual.video!==v)) gravar.push({chave:k, nome:nome.trim(), video:v});
+    else if(!v && atual && !String(video||'').trim()) apagar.push(k);
+  });
+  const vistos = new Set(); return { gravar: gravar.filter(x=>!vistos.has(x.chave) && vistos.add(x.chave)), apagar:[...new Set(apagar)] };
+}
+async function aplicarVideos(m){
+  await D.salvarVideos(m.gravar); await D.apagarVideos(m.apagar);
+  m.gravar.forEach(x=>{ VIDEOS[x.chave] = {nome:x.nome, video:x.video}; });
+  m.apagar.forEach(k=>{ delete VIDEOS[k]; });
+  guardarCache();
+}
+async function sincronizarVideosDaFicha(E){
+  const itens = [];
+  E.order.forEach(L=>E.w[L].ex.forEach(e=>{ const nome = Array.isArray(e.parts) ? e.parts.filter(Boolean).join(' + ') : e.n; itens.push({nome, video:e.video}); }));
+  try{ await aplicarVideos(mudancasDeVideo(itens)); }catch(err){ toast('A ficha foi salva, mas não consegui salvar os links de vídeo.', true); }
+}
+async function videosSheet(){
+  openSheet(`<h2>Vídeos dos exercícios</h2><div class="spin" aria-hidden="true"></div>`);
+  let nomes = [];
+  try{ nomes = await D.exerciciosDaFamilia(); }catch(e){ /* sem conexão: mostra os da biblioteca e da sua ficha */ }
+  if(FICHA) FICHA.order.forEach(L=>FICHA.W[L].ex.forEach(e=>nomes.push(e.n)));
+  Object.values(VIDEOS).forEach(v=>nomes.push(v.nome));
+  const porChave = new Map();
+  nomes.forEach(n=>{ const k = chaveVideo(n||''); if(k && !porChave.has(k)) porChave.set(k, n.trim()); });
+  const linhas = [...porChave.entries()].map(([k,n])=>({k, n, v: VIDEOS[k] ? VIDEOS[k].video : ''}))
+    .sort((a,b)=> (a.v?1:0)-(b.v?1:0) || a.n.localeCompare(b.n,'pt-BR'));
+  const sem = linhas.filter(l=>!l.v).length;
+  openSheet(`<h2>Vídeos dos exercícios</h2>
+    <p>Os links valem para todo mundo: quem tiver o exercício na ficha vê o botão <b>▶ Ver execução</b>. Só você pode mudar.</p>
+    <p class="note" style="margin-top:0">${linhas.length} exercícios das fichas da família · <b>${sem}</b> sem vídeo</p>
+    <div class="vlist">${linhas.map(l=>`<label class="vrow${l.v?' tem':''}"><span>${esc(l.n)}</span>
+      <input class="inp vin" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" data-vk="${esc(l.k)}" data-vn="${esc(l.n)}" value="${esc(l.v)}" placeholder="Cole o link do vídeo"></label>`).join('')}</div>
+    <div class="btns" style="margin-top:14px"><button class="btn primary" data-a="v-save">Salvar vídeos</button><button class="btn ghost" data-a="close">Fechar</button></div>`);
+}
+async function salvarVideosSheet(btn){
+  const ins = Array.from(document.querySelectorAll('#sheet-card [data-vk]'));
+  const ruim = ins.find(i=>i.value.trim() && !linkOk(i.value));
+  if(ruim){ toast('O link de "'+ruim.dataset.vn+'" não parece um endereço válido.', true); ruim.focus(); return; }
+  const m = mudancasDeVideo(ins.map(i=>({nome:i.dataset.vn, video:i.value})));
+  if(!m.gravar.length && !m.apagar.length){ closeSheet(true); return; }
+  btn.disabled = true;
+  try{ await aplicarVideos(m); closeSheet(true); render(); toast('Vídeos salvos para todos.'); }
+  catch(e){ btn.disabled = false; toast('Não consegui salvar agora. Confira a internet.', true); }
+}
 function setPath(obj, path, val){
   const ks = path.split('.'); let o = obj;
   for(let i=0;i<ks.length-1;i++){ o = o[ks[i]]; if(o==null) return; }
@@ -402,7 +457,7 @@ function validarFicha(E){
       if(!nome) return 'Falta o nome do exercício '+(i+1)+' do treino '+L+'.';
       if(!(e.s>=1 && e.s<=10)) return 'Séries do exercício '+(i+1)+' do treino '+L+': use de 1 a 10.';
       if(!(e.r[0]>=1) || e.r[1]<e.r[0]) return 'Confira as repetições do exercício '+(i+1)+' do treino '+L+'.';
-      if(e.video && String(e.video).trim() && !linkOk(e.video)) return 'O link do vídeo do exercício '+(i+1)+' do treino '+L+' não parece um endereço válido.';
+      if(EDITOR && e.video && String(e.video).trim() && !linkOk(e.video)) return 'O link do vídeo do exercício '+(i+1)+' do treino '+L+' não parece um endereço válido.';
     }
   }
   return '';
@@ -419,6 +474,7 @@ async function salvarEdicao(){
     if(E.id) FICHAS = FICHAS.map(f=>f.id===salvo.id?salvo:f);
     else { FICHAS = FICHAS.map(f=>Object.assign({}, f, {ativa:false})).concat([salvo]); }
     definirFicha(); S.edit = null;
+    if(EDITOR) await sincronizarVideosDaFicha(E);
     go('treinos'); toast('Ficha salva.');
   }catch(e){ if(btn) btn.disabled = false; toast('Não consegui salvar a ficha. Confira a conexão e tente de novo.', true); }
 }
@@ -1400,6 +1456,7 @@ function perfilSheet(){
     <button class="btn" data-a="p-save" style="margin-top:10px">Salvar perfil</button>
     <div class="btns" style="margin-top:16px">
       <button class="btn" data-a="grupo">${ICON.users} Grupo da família${S.grupo?' · '+esc(S.grupo.nome):''}</button>
+      ${EDITOR?`<button class="btn" data-a="videos">${ICON.play} Vídeos dos exercícios</button>`:''}
       ${FICHA?`<button class="btn" data-a="lembretes">${ICON.bell} Lembretes no calendário</button><button class="btn" data-a="f-edit">${ICON.edit} Editar ficha atual</button><button class="btn" data-a="fichas">Trocar de ficha</button>`:''}
       <button class="btn danger" data-a="sair">Sair da conta</button>
       <button class="btn ghost" data-a="close">Fechar</button></div>`);
@@ -1517,6 +1574,8 @@ document.addEventListener('click', async e=>{
       catch(err){ toast(erroGrupo(err), true); } break;
     case 'lembretes': closeSheet(true); if(FICHA) lembretesSheet(); break;
     case 'lem-go': baixarLembretes(); break;
+    case 'videos': closeSheet(true); if(EDITOR) videosSheet(); break;
+    case 'v-save': salvarVideosSheet(t); break;
     case 'rest-add': if(S.rest){ unlockAudio(); S.rest.end = Math.max(Date.now()+1000, (S.rest.over?Date.now():S.rest.end) + (+t.dataset.s)*1000); if(S.rest.over){ S.rest.over=false; $('#rest').classList.remove('over'); } S.rest.total = Math.max(S.rest.total, (S.rest.end-Date.now())/1000); scheduleBeeps((S.rest.end-Date.now())/1000); tickRest(); } break;
     case 'rest-skip': stopRest(); break;
     case 'sound': S.sound=!S.sound; LS.set('mt.sound',S.sound); if(S.sound) unlockAudio(); else cancelBeeps(); if(S.sound && S.rest && !S.rest.over) scheduleBeeps((S.rest.end-Date.now())/1000);
@@ -1655,6 +1714,7 @@ async function carregar(silencioso){
   try{
     NOME = d.nome || NOME; AVATAR = d.avatar; INSTA = d.instagram; AVATAR_IMG = null;
     FICHAS = d.fichas; definirFicha();
+    VIDEOS = {}; (d.videos||[]).forEach(v=>{ VIDEOS[v.chave] = {nome:v.nome, video:v.video}; }); EDITOR = !!d.editor;
     S.pending = LS.get(kPending(), []);
     const ids = new Set(d.treinos.map(s=>s.id));
     S.pending = S.pending.filter(p=>!ids.has(p.id)); LS.set(kPending(), S.pending);
@@ -1680,7 +1740,8 @@ function guardarCache(){
   if(!UID) return;
   const c = LS.get(kDados(), null); if(!c) return;
   const pend = new Set(S.pending.map(p=>p.id));
-  Object.assign(c, { treinos:S.sessions.filter(x=>!pend.has(x.id)), peso:S.body, avaliacoes:S.measures, fotos:S.photos, fichas:FICHAS, nome:NOME, avatar:AVATAR, instagram:INSTA });
+  Object.assign(c, { treinos:S.sessions.filter(x=>!pend.has(x.id)), peso:S.body, avaliacoes:S.measures, fotos:S.photos, fichas:FICHAS, nome:NOME, avatar:AVATAR, instagram:INSTA,
+    videos:Object.entries(VIDEOS).map(([chave,v])=>({chave, nome:v.nome, video:v.video})) });
   LS.set(kDados(), c);
 }
 // Usuário guardado no aparelho (para abrir sem internet)
@@ -1698,7 +1759,7 @@ function entrar(user){
   carregar();
 }
 function sairLocal(){
-  UID = null; EMAIL=''; NOME=''; AVATAR=''; INSTA=''; AVATAR_IMG=null; FICHAS=[]; FICHA=null;
+  UID = null; EMAIL=''; NOME=''; AVATAR=''; INSTA=''; AVATAR_IMG=null; FICHAS=[]; FICHA=null; VIDEOS={}; EDITOR=false;
   Object.assign(S, {sessions:[], body:[], measures:[], photos:[], draft:null, pending:[], edit:null, exSel:null, mSel:null, grupo:null, grupoM:null, grupoErr:false, offline:false, sync:'ok'});
   stopRest(); closeSheet(true);
   S.auth='entrar'; S.authErr=''; S.authMsg='';

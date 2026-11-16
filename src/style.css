@@ -435,3 +435,11 @@ a.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
 .frow2.lem{grid-template-columns:1fr 1fr;gap:10px}
 .lbl-in{display:flex;flex-direction:column;gap:6px}
 .lbl-in span{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+
+/* ---------- Biblioteca de vídeos (editor) ---------- */
+.vlist{display:grid;gap:8px;margin-top:12px}
+.vrow{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:12px;background:var(--panel-2);border:1px solid var(--line)}
+.vrow span{font-size:13px;font-weight:800}
+.vrow.tem{border-color:rgba(60,201,255,.35)}
+.vrow.tem span::before{content:"▶ ";color:var(--cyan)}
+.vrow .inp.vin{font-size:14px;min-height:44px;padding:10px 12px}

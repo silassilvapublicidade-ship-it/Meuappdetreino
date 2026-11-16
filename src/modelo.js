@@ -95,6 +95,12 @@ export function chutarAumento(nome){
   return 2;
 }
 
+// Chave para achar o vídeo do exercício mesmo com pequenas diferenças no nome
+const PALAVRAS_SOLTAS = new Set(['de','da','do','das','dos','com','c','na','no','nas','nos','em','e','a','o','as','os','para','p','pra']);
+export function chaveVideo(nome){
+  return slug(nome).split('-').filter(w=>w && !PALAVRAS_SOLTAS.has(w)).join('-').slice(0,120);
+}
+
 // Link de vídeo aceito: só http(s)
 export function linkOk(u){
   u = String(u==null?'':u).trim();
@@ -131,7 +137,6 @@ export function fichaParaSalvar(f){
     w[L] = { name:t.name, focus:t.focus||'', rest:t.rest||'', ex:t.ex.map(e=>{
       const bi = Array.isArray(e.parts) && e.parts.filter(Boolean).length>1;
       const o = { n: bi ? e.parts.filter(Boolean).join(' + ') : e.n, s:e.s, r:e.r, rest:e.rest, tip:e.tip||'' };
-      if(linkOk(e.video)) o.video = linkOk(e.video);
       if(bi){ o.parts = e.parts.filter(Boolean); o.inc = o.parts.map((p,i)=>Number(Array.isArray(e.inc)?e.inc[i]:e.inc)||0); }
       else o.inc = Number(Array.isArray(e.inc)?e.inc[0]:e.inc)||0;
       return o;

@@ -12,7 +12,7 @@ import {
 import { calcular as calcConquistas, nivel, semanasAtivas, chaveDia, NIVEIS } from './conquistas.js';
 import { prepararCatalogo, acharNoCatalogo, GRUPOS } from './catalogo.js';
 import * as D from './dados.js';
-import { desenharSemana, desenharMes, desenharConquista } from './cartao.js';
+import { desenharSemana, desenharMes, desenharConquista, desenharAntesDepois, desenharRetrospectiva } from './cartao.js';
 
 /* ---------- Utilidades ---------- */
 function keyOf(s){ return slug(s).replace(/-/g,'_').slice(0,40); }
@@ -611,6 +611,7 @@ function vHoje(){
   let date = new Date().toLocaleDateString('pt-BR',{weekday:'long', day:'numeric', month:'long'}); date = date.charAt(0).toUpperCase()+date.slice(1);
   return `<header class="top"><span class="date">${esc(date)}</span><span class="top-r">${statusPill()}${avatarBtn()}</span></header>
     ${avisosHoje()}
+    ${cardRetro()}
     ${cardInstalar()}
     ${cardFichaVencendo()}
     ${hero}
@@ -1342,7 +1343,8 @@ function updateProgress(){
 /* ----- Histórico ----- */
 function vHistorico(){
   const head = `<header class="top"><h1 class="h1">Histórico</h1><span class="top-r">${statusPill()}${avatarBtn()}</span></header>`
-    + (S.sessions.length ? `<div class="btns two" style="margin-bottom:14px"><button class="btn sm" data-a="share" data-t="semana">${ICON.share} Semana</button><button class="btn sm" data-a="share" data-t="mes">${ICON.share} Mês</button></div>` : '');
+    + (S.sessions.length ? `<div class="btns two" style="margin-bottom:8px"><button class="btn sm" data-a="share" data-t="semana">${ICON.share} Semana</button><button class="btn sm" data-a="share" data-t="mes">${ICON.share} Mês</button></div>
+      <button class="btn sm retro-b" data-a="share-retro" style="margin-bottom:14px">🎉 Retrospectiva ${anoRetro()}</button>` : '');
   if(!S.sessions.length) return head+`<div class="empty"><b>Nenhum treino salvo ainda</b>Quando você finalizar um treino, ele aparece aqui com data, duração, séries e volume.</div>`;
   let html='', month='';
   S.sessions.forEach(s=>{
@@ -1503,7 +1505,8 @@ function evoFotos(){
       <div class="row" style="margin-bottom:10px"><select class="inp" id="cmp-a" aria-label="Foto de antes">${dopts(c.a)}</select><select class="inp" id="cmp-b" aria-label="Foto de depois">${dopts(c.b)}</select></div>
       ${pa && pb ? `<div class="cmp" id="cmp"><img data-path="${esc(pb.path)}" alt="Depois, ${esc(shortDay(c.b))}"><img class="a" id="cmp-img-a" data-path="${esc(pa.path)}" alt="Antes, ${esc(shortDay(c.a))}">
         <span class="divider" id="cmp-div"></span><span class="tag l">Antes · ${esc(shortDay(c.a))}</span><span class="tag r">Depois · ${esc(shortDay(c.b))}</span></div>
-        <input type="range" id="cmp-range" min="0" max="100" value="50" aria-label="Deslize para comparar">`
+        <input type="range" id="cmp-range" min="0" max="100" value="50" aria-label="Deslize para comparar">
+        <button class="btn" data-a="share-ad" style="margin-top:12px">${ICON.share} Gerar story antes e depois</button>`
         : `<p class="note">Falta a foto de ${esc(POSES.find(x=>x[0]===c.pose)[1].toLowerCase())} em ${!pa?shortDay(c.a):shortDay(c.b)}.</p>`}
     </section>`;
   }
@@ -2060,6 +2063,61 @@ function fichasSheet(){
 
 /* ---------- Compartilhar (imagem da semana ou do mês) ---------- */
 const CARD = { tipo:'semana', ref:null, titulo:'', conquista:null, blob:null, url:null };
+// ---------- antes e depois ----------
+function valorPerto(dk, k, janela){
+  const alvo = new Date(dk+'T12:00').getTime(); let melhor = null;
+  serieMedida(k).forEach(p=>{ const dd = Math.abs(p.t-alvo); if(dd <= janela*864e5 && (!melhor || dd < melhor.dd)) melhor = { v:p.v, dd }; });
+  return melhor ? melhor.v : null;
+}
+async function bitmapDaFoto(path){ try{ const b = await D.baixarFoto(path); return await createImageBitmap(b); }catch(e){ return null; } }
+async function dadosAntesDepois(){
+  const c = S.cmp, P = S.photos;
+  const pa = P.find(p=>p.d===c.a && p.pose===c.pose), pb = P.find(p=>p.d===c.b && p.pose===c.pose);
+  const [fotoA, fotoB] = await Promise.all([bitmapDaFoto(pa.path), bitmapDaFoto(pb.path)]);
+  const kgA = valorPerto(c.a, 'peso', 10), kgB = valorPerto(c.b, 'peso', 10);
+  const gA = valorPerto(c.a, 'gordura', 20), gB = valorPerto(c.b, 'gordura', 20);
+  const ta = new Date(c.a+'T12:00').getTime(), tb = new Date(c.b+'T12:00').getTime();
+  return { antes:{ ts:ta, kg: kgA!=null ? r2(kgA) : null }, depois:{ ts:tb, kg: kgB!=null ? r2(kgB) : null }, fotoA, fotoB,
+    dias: Math.round((tb-ta)/864e5), difKg: kgA!=null && kgB!=null ? Math.round((kgB-kgA)*10)/10 : null,
+    difGord: gA!=null && gB!=null ? Math.round((gB-gA)*10)/10 : null,
+    treinos: S.sessions.filter(x=>x.start>=ta && x.start<=tb+864e5).length,
+    pose: (POSES.find(p=>p[0]===c.pose)||['',''])[1], data: Date.now(), nome: NOME || EMAIL.split('@')[0], insta: INSTA };
+}
+// ---------- retrospectiva ----------
+const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+function dadosRetrospectiva(ano){
+  const doAno = S.sessions.filter(s=>new Date(s.start).getFullYear()===ano);
+  const dias = new Set(doAno.map(s=>chaveDia(s.start)));
+  const seg = doAno.reduce((n,s)=>n+(s.dur||0),0), vol = doAno.reduce((n,s)=>n+(s.vol||0),0);
+  // melhor sequência de semanas ativas no ano
+  const porSemana = new Map(); [...dias].forEach(dk=>{ const w = startOfWeek(new Date(dk+'T12:00').getTime()); porSemana.set(w, (porSemana.get(w)||0)+1); });
+  const ativas = [...porSemana.entries()].filter(([w,n])=>n>=3).map(([w])=>w).sort((a,b)=>a-b);
+  let seq = 0, run = 0, ant = null;
+  ativas.forEach(w=>{ run = ant!=null && Math.round((w-ant)/(7*864e5))===1 ? run+1 : 1; seq = Math.max(seq, run); ant = w; });
+  // favorito, evolução e mês
+  const N = nomeDeChave(), cont = {}, prim = {}, melhor = {};
+  doAno.slice().sort((a,b)=>a.start-b.start).forEach(s=>(s.ex||[]).forEach(e=>(e.keys||[]).forEach((k,i)=>{
+    cont[k] = (cont[k]||0)+1;
+    let m = null; (e.sets||[]).forEach(st=>{ const kg = num(st.p[i]&&st.p[i].kg); if(kg>0 && (m==null||kg>m)) m = kg; });
+    if(m!=null){ if(prim[k]==null) prim[k] = m; melhor[k] = Math.max(melhor[k]||0, m); }
+  })));
+  const fk = Object.keys(cont).sort((a,b)=>cont[b]-cont[a])[0];
+  const ek = Object.keys(melhor).filter(k=>melhor[k]-prim[k]>0).sort((a,b)=>(melhor[b]-prim[b])-(melhor[a]-prim[a]))[0];
+  const porMes = {}; [...dias].forEach(dk=>{ const m = +dk.slice(5,7)-1; porMes[m] = (porMes[m]||0)+1; });
+  const mm = Object.keys(porMes).sort((a,b)=>porMes[b]-porMes[a])[0];
+  const conq = minhasConquistas().filter(c=>c.at && new Date(c.at).getFullYear()===ano).length;
+  return { ano, treinos: doAno.length, dias: dias.size, horas: fmtN(seg/3600, seg<36000?1:0), toneladas: fmtN(vol/1000, vol<10000?1:0), seq,
+    favorito: fk ? { nome: N[fk]||fk, vezes: cont[fk] } : null, evolucao: ek ? { nome: N[ek]||ek, kg: r2(melhor[ek]-prim[ek]) } : null,
+    mes: mm!=null ? { nome: MESES_PT[mm], dias: porMes[mm] } : null, conquistas: conq, cardio: doAno.filter(ehCardio).length,
+    data: Date.now(), nome: NOME || EMAIL.split('@')[0], insta: INSTA };
+}
+function anoRetro(){ const d = new Date(); return d.getMonth()===0 && d.getDate()<=15 ? d.getFullYear()-1 : d.getFullYear(); }
+function cardRetro(){
+  const d = new Date(), ano = anoRetro();
+  if(!((d.getMonth()===11 && d.getDate()>=10) || (d.getMonth()===0 && d.getDate()<=15))) return '';
+  if(!S.sessions.some(s=>new Date(s.start).getFullYear()===ano) || LS.get('mt.retro.'+ano, false)) return '';
+  return `<div class="aviso n-festa" role="status"><span class="av-i" aria-hidden="true">🎉</span><p><b>Sua retrospectiva ${ano} está pronta!</b> Treinos, horas, toneladas e destaques do ano.<br><button class="btn sm primary" data-a="share-retro" style="margin-top:8px;width:auto">Ver retrospectiva</button></p><button class="x" data-a="retro-x" aria-label="Fechar">×</button></div>`;
+}
 function conquistaNivel(nv){ return { nivel:true, ico:'⭐', nome:'Nível '+nv.nome, desc: nv.n+' treinos'+(nv.prox?' · próximo: '+nv.prox.nome+' ('+nv.prox.n+')':''), at: Date.now(), nv }; }
 function dadosConquista(c){
   const C = minhasConquistas(), nv = c.nv || nivel(S.sessions.length);
@@ -2086,15 +2144,19 @@ async function abrirCompartilhar(tipo, ref, titulo, conquista){
   if(CARD.url){ try{ URL.revokeObjectURL(CARD.url); }catch(e){} CARD.url = null; }
   CARD.blob = null;
   const op = [['semana','Semana'],['mes','Mês']].concat(CARD.conquista ? [['conquista', CARD.conquista.nivel ? 'Nível' : 'Conquista']] : []);
-  const tabs = `<div class="seg ${op.length===3?'tres':'two'}" role="tablist">${op.map(([k,l])=>`<button role="tab" aria-selected="${tipo===k}" data-a="share-tab" data-t="${k}">${l}</button>`).join('')}</div>`;
-  openSheet(`<h2>${esc(titulo || 'Compartilhar')}</h2><p>Imagem pronta para o story ou o WhatsApp.</p>${tabs}
+  const unico = tipo==='antesdepois' || tipo==='retro';
+  const tabs = unico ? '' : `<div class="seg ${op.length===3?'tres':'two'}" role="tablist">${op.map(([k,l])=>`<button role="tab" aria-selected="${tipo===k}" data-a="share-tab" data-t="${k}">${l}</button>`).join('')}</div>`;
+  const aviso = tipo==='antesdepois' ? '<p class="note" style="margin-top:0">Suas fotos aparecem na imagem. Ela só sai do app se você compartilhar ou baixar.</p>' : '';
+  openSheet(`<h2>${esc(titulo || 'Compartilhar')}</h2><p>Imagem pronta para o story ou o WhatsApp.</p>${aviso}${tabs}
     <div class="cardprev" id="cardprev"><div class="spin" aria-hidden="true"></div></div>
     <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="share-go" id="share-go" disabled>${ICON.share} Compartilhar</button>
     <a class="btn ghost" id="share-dl" download="treino.png" aria-disabled="true">Baixar imagem</a>
     <button class="btn ghost" data-a="close">Fechar</button></div>`);
   try{
     const foto = await fotoParaCartao();
-    const canvas = tipo==='conquista' && CARD.conquista ? await desenharConquista(Object.assign(dadosConquista(CARD.conquista), {foto}))
+    const canvas = tipo==='antesdepois' ? await desenharAntesDepois(Object.assign(await dadosAntesDepois(), {foto}))
+      : tipo==='retro' ? await desenharRetrospectiva(Object.assign(dadosRetrospectiva(CARD.ano), {foto}))
+      : tipo==='conquista' && CARD.conquista ? await desenharConquista(Object.assign(dadosConquista(CARD.conquista), {foto}))
       : tipo==='mes' ? await desenharMes(Object.assign(dadosMes(ref), {foto})) : await desenharSemana(Object.assign(dadosSemana(ref), {foto, conquista: ref && CARD.conquista ? CARD.conquista.nome : null}));
     const blob = await new Promise(r=>canvas.toBlob(r, 'image/png'));
     if(CARD.tipo!==tipo || CARD.ref!==(ref||null)) return;
@@ -2247,6 +2309,9 @@ document.addEventListener('click', async e=>{
     case 'share-tab': abrirCompartilhar(t.dataset.t, CARD.ref, CARD.titulo, CARD.conquista); break;
     case 'share-go': enviarCard(); break;
     case 'share-cq': { const c = minhasConquistas().find(x=>x.id===t.dataset.id); if(c && c.at) abrirCompartilhar('conquista', null, c.ico+' '+c.nome, c); break; }
+    case 'share-ad': abrirCompartilhar('antesdepois', null, 'Antes e depois'); break;
+    case 'share-retro': CARD.ano = anoRetro(); abrirCompartilhar('retro', null, 'Retrospectiva '+CARD.ano); break;
+    case 'retro-x': LS.set('mt.retro.'+anoRetro(), true); { const c = t.closest('.aviso'); if(c) c.remove(); } break;
     case 'share-nv': { const c = conquistaNivel(nivel(S.sessions.length)); abrirCompartilhar('conquista', null, 'Nível '+c.nv.nome, c); break; }
     case 'p-save': {
       const n = $('#p-nome').value.trim(); const ig = $('#p-insta').value.trim().replace(/^@+/, '').replace(/\s+/g,'');

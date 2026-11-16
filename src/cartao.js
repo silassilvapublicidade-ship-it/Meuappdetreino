@@ -321,3 +321,74 @@ export async function desenharConquista(d){
   perfil(x, d, 1610);
   return c;
 }
+
+/* ---------- antes e depois ---------- */
+function capa(x, img, l, t, w, h, r){
+  x.save(); rr(x, l, t, w, h, r); x.clip();
+  if(img){
+    const s = Math.max(w/img.width, h/img.height), iw = img.width*s, ih = img.height*s;
+    x.drawImage(img, l+(w-iw)/2, t+(h-ih)/2, iw, ih);
+  } else { x.fillStyle = '#0d1d25'; x.fillRect(l, t, w, h); }
+  const g = x.createLinearGradient(0, t+h*0.62, 0, t+h); g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,.78)');
+  x.fillStyle = g; x.fillRect(l, t, w, h);
+  x.restore();
+  x.save(); rr(x, l, t, w, h, r); x.lineWidth = 3; x.strokeStyle = 'rgba(60,201,255,.45)'; x.stroke(); x.restore();
+}
+export async function desenharAntesDepois(d){
+  await fontes();
+  const [c, x] = base();
+  marca(x, d.data);
+  rotulo(x, 'MINHA EVOLUÇÃO', 400);
+  x.textAlign = 'left'; x.font = `400 150px ${DISPLAY}`; x.fillStyle = COR.ink; x.fillText('ANTES', 72, 545);
+  const wA = x.measureText('ANTES ').width;
+  x.fillStyle = gradTxt(x, 420, 545); x.fillText('& DEPOIS', 72 + wA, 545);
+  const gap = 24, w = (W-160-gap)/2, h = w*1.5, t = 590;
+  [[d.antes, d.fotoA, 80], [d.depois, d.fotoB, 80+w+gap]].forEach(([info, img, l], i)=>{
+    capa(x, img, l, t, w, h, 28);
+    x.textAlign = 'left';
+    x.font = `400 64px ${DISPLAY}`; x.fillStyle = i ? COR.mint : COR.ink; x.fillText(i ? 'DEPOIS' : 'ANTES', l+26, t+h-62);
+    x.font = `700 28px ${BODY}`; x.fillStyle = 'rgba(242,248,249,.85)'; x.fillText(dataBR(info.ts), l+26, t+h-24);
+    if(info.kg!=null){ x.textAlign = 'right'; x.font = `400 54px ${DISPLAY}`; x.fillStyle = COR.ink; x.fillText(String(info.kg).replace('.',',')+' KG', l+w-24, t+h-24); }
+  });
+  const itens = [[String(d.dias), d.dias===1?'DIA':'DIAS']];
+  if(d.difKg!=null) itens.push([(d.difKg>0?'+':'')+String(d.difKg).replace('.',',')+' kg', 'PESO']);
+  if(d.difGord!=null) itens.push([(d.difGord>0?'+':'')+String(d.difGord).replace('.',',')+'%', 'GORDURA']);
+  if(itens.length<3) itens.push([String(d.treinos), d.treinos===1?'TREINO':'TREINOS']);
+  if(itens.length<3) itens.push([d.pose.toUpperCase(), 'POSE']);
+  stats(x, itens.slice(0,3), t+h+28);
+  perfil(x, d, 1610);
+  return c;
+}
+
+/* ---------- retrospectiva do ano ---------- */
+export async function desenharRetrospectiva(d){
+  await fontes();
+  const [c, x] = base();
+  equipamento(x);
+  marca(x, d.data);
+  rotulo(x, 'RETROSPECTIVA', 400);
+  x.textAlign = 'left'; x.font = `400 260px ${DISPLAY}`;
+  x.save(); x.shadowColor = 'rgba(67,227,173,.45)'; x.shadowBlur = 40; x.fillStyle = gradTxt(x, 420, 640); x.fillText(String(d.ano), 66, 640); x.restore();
+  // número principal
+  x.font = `400 210px ${DISPLAY}`; x.fillStyle = COR.ink; x.fillText(String(d.treinos), 72, 860);
+  const wn = x.measureText(String(d.treinos)).width;
+  x.font = `400 70px ${DISPLAY}`; x.fillStyle = COR.ink; x.fillText(d.treinos===1?'TREINO':'TREINOS', 72+wn+30, 790);
+  x.fillStyle = COR.muted; x.fillText(d.dias+' DIAS NA ACADEMIA', 72+wn+30, 858);
+  stats(x, [[d.horas, 'HORAS'], [d.toneladas, 'TONELADAS'], [d.seq+' sem', 'SEQUÊNCIA']], 920);
+  // destaques
+  const linhas = [
+    ['EXERCÍCIO FAVORITO', d.favorito ? d.favorito.nome+' · '+d.favorito.vezes+'x' : '—'],
+    ['MAIOR EVOLUÇÃO', d.evolucao ? d.evolucao.nome+' · +'+String(d.evolucao.kg).replace('.',',')+' kg' : '—'],
+    ['MÊS MAIS FORTE', d.mes ? d.mes.nome+' · '+d.mes.dias+' dias' : '—'],
+    ['CONQUISTAS NO ANO', String(d.conquistas)+(d.cardio ? '   ·   CARDIOS: '+d.cardio : '')]
+  ];
+  let y = 1190;
+  linhas.forEach(([k, v])=>{
+    x.textAlign = 'left'; x.font = `800 22px ${BODY}`; x.fillStyle = COR.mint; espacado(x, k, 80, y, 4, 'left');
+    x.font = `800 40px ${BODY}`; x.fillStyle = COR.ink;
+    let t = v; while(x.measureText(t).width > W-160 && t.length>6) t = t.slice(0,-2)+'…';
+    x.fillText(t, 80, y+50); y += 88;
+  });
+  perfil(x, d, 1610);
+  return c;
+}

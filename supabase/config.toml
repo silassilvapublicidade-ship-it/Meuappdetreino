@@ -1,0 +1,5 @@
+# Configuração usada pelo Supabase CLI (opcional).
+project_id = "jnjkuesvjuvnobizrhys"
+
+[functions.ler-documento]
+verify_jwt = true

@@ -74,10 +74,23 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "metodo" }, 405);
 
   const chave = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!chave) return json({ error: "sem_chave" }, 503);
+  const modelo = Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-5-5";
 
   let corpo: { tipo?: string; arquivos?: { type?: string; data?: string }[] };
   try { corpo = await req.json(); } catch (_) { return json({ error: "corpo" }, 400); }
+
+  // Verificação da área do admin: diz se a chave existe e se a API aceita (não gasta tokens).
+  if (corpo.tipo === "status") {
+    if (!chave) return json({ chave: false, valida: false, modelo });
+    try {
+      const t = await fetch("https://api.anthropic.com/v1/models?limit=1", { headers: { "x-api-key": chave, "anthropic-version": "2023-06-01" } });
+      return json({ chave: true, valida: t.ok, http: t.status, modelo });
+    } catch (_) {
+      return json({ chave: true, valida: false, http: 0, modelo });
+    }
+  }
+
+  if (!chave) return json({ error: "sem_chave" }, 503);
 
   const tipo = corpo.tipo ?? "";
   const arquivos = Array.isArray(corpo.arquivos) ? corpo.arquivos : [];
@@ -101,7 +114,7 @@ Deno.serve(async (req: Request) => {
     method: "POST",
     headers: { "x-api-key": chave, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
-      model: Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-5-5",
+      model: modelo,
       max_tokens: 8000,
       messages: [{ role: "user", content }],
     }),

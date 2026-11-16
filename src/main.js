@@ -50,6 +50,7 @@ const ICON = {
   play:'<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>',
   swap:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg>',
   bell:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 004 0"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7.5 3v5.5c0 4.6-3.1 8.2-7.5 9.5-4.4-1.3-7.5-4.9-7.5-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.3-4.6"/></svg>',
   users:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.8a3.3 3.3 0 010 6.4M18.2 14.8c1.9.7 3 2.4 3.3 5.2"/></svg>'
 };
 
@@ -67,13 +68,17 @@ let FICHAS = [];          // fichas do usuário (como vêm do banco)
 let FICHA = null;         // ficha ativa preparada: {id, nome, order, W, sched}
 let VIDEOS = {};          // biblioteca de vídeos: chave do exercício -> {nome, video}
 let EDITOR = false;       // só o editor (Silas) cadastra os links de vídeo
+let ADMIN = false;        // acesso à área do admin
+let AVISOS = [];          // avisos do admin para todos
+const VERSAO = typeof __VERSAO__ !== 'undefined' ? __VERSAO__ : 'dev';
 const S = {
   view:'carregando', auth:'entrar', authMsg:'', authErr:'',
   sessions:[], body:[], measures:[], photos:[], draft:null, pending:[],
   sync:'ok', rest:null, exSel:null, mSel:null, sound:LS.get('mt.sound', true), confirmDel:null,
   evoTab:'cargas', mreview:null, pnew:null, pslot:null, cmp:{pose:'frente', a:null, b:null}, busy:false,
   edit:null, editBack:'treinos', loadErr:'',
-  grupo:null, grupoM:null, grupoErr:false, offline:false
+  grupo:null, grupoM:null, grupoErr:false, offline:false,
+  admTab:'painel', adm:{}, admDono:null
 };
 const kDados = ()=>'mt.dados.'+UID;
 function metaSemana(){ return FICHA ? (SEMANA.filter(dd=>FICHA.W[FICHA.sched[dd]]).length || FICHA.order.length) : 3; }
@@ -201,6 +206,7 @@ function render(){
   else if(v==='historico') html = vHistorico();
   else if(v==='evolucao') html = vEvolucao();
   else if(v==='sessao') html = vSessao();
+  else if(v==='admin') html = ADMIN ? vAdmin() : vHoje();
   $('#app').innerHTML = html;
   const fora = ['carregando','auth','nova-senha','onboarding','ficha'].indexOf(v)>=0;
   document.body.classList.toggle('in-session', v==='sessao');
@@ -375,7 +381,7 @@ function vFicha(){
   }).join('');
   return `<div class="shead plain"><div class="shead-row">
       <button class="iconbtn" data-a="f-cancel" aria-label="Cancelar edição">${ICON.back}</button>
-      <div class="st"><b>${E.id?'Editar ficha':'Nova ficha'}</b><small>Confira tudo e salve no fim</small></div></div></div>
+      <div class="st"><b>${E.id?'Editar ficha':'Nova ficha'}${E.dono?' de '+esc(E.dono.nome):''}</b><small>${E.dono?'Você está editando como admin':'Confira tudo e salve no fim'}</small></div></div></div>
     ${E.aviso?`<p class="sug">${esc(E.aviso)}</p>`:''}
     <label class="lbl" for="f-nome">Nome da ficha</label>
     <input class="inp" id="f-nome" data-e="nome" value="${esc(E.nome||'')}">
@@ -469,6 +475,16 @@ async function salvarEdicao(){
   if(erro){ toast(erro, true); return; }
   const json = fichaParaSalvar(E);
   const btn = document.querySelector('[data-a="f-save"]'); if(btn) btn.disabled = true;
+  if(E.dono){
+    try{
+      await D.adminSalvarFicha(E.dono.id, E.id||null, E.nome, json);
+      if(EDITOR) await sincronizarVideosDaFicha(E);
+      if(E.dono.id===UID){ const d = await D.carregarTudo(UID); FICHAS = d.fichas; definirFicha(); }
+      const nome = E.dono.nome; S.edit = null; S.adm.usuarios = null;
+      go('admin'); toast('Ficha de '+nome+' salva. Ela vê na próxima vez que abrir o app.');
+    }catch(e){ if(btn) btn.disabled = false; toast('Não consegui salvar a ficha. Confira a conexão e tente de novo.', true); }
+    return;
+  }
   try{
     const salvo = await D.salvarFicha(UID, E.id||null, E.nome, json);
     if(E.id) FICHAS = FICHAS.map(f=>f.id===salvo.id?salvo:f);
@@ -543,6 +559,7 @@ function vHoje(){
   </div>`;
   let date = new Date().toLocaleDateString('pt-BR',{weekday:'long', day:'numeric', month:'long'}); date = date.charAt(0).toUpperCase()+date.slice(1);
   return `<header class="top"><span class="date">${esc(date)}</span><span class="top-r">${statusPill()}${avatarBtn()}</span></header>
+    ${avisosHoje()}
     ${hero}
     <p class="todayline">${today}</p>
     <div class="section"><div class="card-h"><h2 class="h2">Esta semana</h2><button class="link" data-a="share" data-t="semana">${ICON.share} Compartilhar</button></div><div class="week">${cells}</div></div>
@@ -676,6 +693,183 @@ function baixarLembretes(){
   if(ios){ window.location.href = url; }
   else { const a = document.createElement('a'); a.href = url; a.download = 'lembretes-treino.ics'; document.body.appendChild(a); a.click(); a.remove(); toast('Arquivo baixado. Abra para adicionar os lembretes ao calendário.'); }
   setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} }, 120000);
+}
+
+
+/* ----- Avisos do admin (tela Hoje) ----- */
+const kAvisosVistos = ()=>'mt.avisos.'+UID;
+const AV_ICO = { info:'📣', alerta:'⚠️', festa:'🎉' };
+function avisosHoje(){
+  const vistos = new Set(LS.get(kAvisosVistos(), []));
+  const agora = Date.now();
+  return AVISOS.filter(a=>a.ativo && (!a.expira || a.expira>agora) && !vistos.has(a.id)).slice(0,3).map(a=>
+    `<div class="aviso n-${esc(a.nivel)}" role="status"><span class="av-i" aria-hidden="true">${AV_ICO[a.nivel]||'📣'}</span><p>${esc(a.texto)}</p><button class="x" data-a="aviso-x" data-id="${esc(a.id)}" aria-label="Fechar aviso">×</button></div>`).join('');
+}
+
+/* ----- Registro de erros (para o admin ver se está tudo funcionando) ----- */
+const errosEnviados = new Set();
+function registrarErro(msg, detalhe){
+  if(!UID || !D.configurado) return;
+  msg = String(msg||'Erro').slice(0,500);
+  if(/ResizeObserver|Script error\.?$|Load failed|Failed to fetch|NetworkError|AbortError/i.test(msg)) return;
+  if(errosEnviados.has(msg) || errosEnviados.size>=10) return;
+  errosEnviados.add(msg);
+  D.registrarErro(UID, { msg, detalhe: String(detalhe||'').slice(0,2000), tela: String(S.view||'').slice(0,60), versao: VERSAO.slice(0,40), aparelho: navigator.userAgent.slice(0,300) });
+}
+window.addEventListener('error', e=>registrarErro(e.message, (e.error && e.error.stack) || (e.filename+':'+e.lineno)));
+window.addEventListener('unhandledrejection', e=>{ const r = e.reason; registrarErro(r && r.message || String(r), r && r.stack); });
+
+/* ----- Área do admin ----- */
+function admUser(id){ return (S.adm.usuarios||[]).find(u=>u.user_id===id) || {user_id:id, nome:'', email:''}; }
+async function carregarAdmin(forcar){
+  if(!ADMIN || S.adm.carregando) return;
+  const A = S.adm, tab = S.admTab, tarefas = [];
+  if((tab==='painel' || forcar) && !A.resumo && !A.resumoErr){
+    tarefas.push(D.adminResumo().then(r=>{ A.resumo = r; A.resumoErr = null; }).catch(e=>{ A.resumoErr = e.message||'falha'; }));
+    tarefas.push(D.statusLeitura().then(r=>{ A.ia = r; }).catch(()=>{ A.ia = {erro:'rede'}; }));
+    tarefas.push(dispositivo().then(r=>{ A.disp = r; }));
+  }
+  if((tab==='usuarios' || tab==='erros') && !A.usuarios && !A.usuariosErr) tarefas.push(D.adminUsuarios().then(r=>{ A.usuarios = r; }).catch(e=>{ A.usuariosErr = true; }));
+  if(tab==='conteudo' && !A.avisos && !A.avisosErr) tarefas.push(D.listarAvisos().then(r=>{ A.avisos = r; }).catch(()=>{ A.avisosErr = true; }));
+  if(tab==='erros' && !A.erros && !A.errosErr) tarefas.push(D.listarErros().then(r=>{ A.erros = r; }).catch(()=>{ A.errosErr = true; }));
+  if(!tarefas.length) return;
+  A.carregando = true;
+  await Promise.all(tarefas);
+  A.carregando = false;
+  if(S.view==='admin') render();
+}
+async function dispositivo(){
+  const out = { versao: VERSAO, online: navigator.onLine, pendentes: S.pending.length, rascunho: !!S.draft, sw: false, cache: 0, uso: null };
+  try{ out.sw = !!(navigator.serviceWorker && navigator.serviceWorker.controller); }catch(e){}
+  try{ if(window.caches){ const c = await caches.open('mt-app'); out.cache = (await c.keys()).length; } }catch(e){}
+  try{ if(navigator.storage && navigator.storage.estimate){ const e = await navigator.storage.estimate(); out.uso = e.usage; } }catch(e){}
+  return out;
+}
+function linhaSaude(estado, titulo, texto){
+  return `<div class="hl-row ${estado}"><span class="hl-dot" aria-hidden="true"></span><div><b>${esc(titulo)}</b><small>${texto}</small></div><span class="hl-tag">${estado==='ok'?'OK':estado==='warn'?'Atenção':estado==='err'?'Problema':'…'}</span></div>`;
+}
+function vAdmin(){
+  const tabs = [['painel','Painel'],['usuarios','Usuários'],['conteudo','Conteúdo'],['erros','Erros']].map(([t,l])=>
+    `<button role="tab" aria-selected="${S.admTab===t}" data-a="adm-tab" data-t="${t}">${l}</button>`).join('');
+  const corpo = S.admTab==='usuarios' ? admUsuarios() : S.admTab==='conteudo' ? admConteudo() : S.admTab==='erros' ? admErros() : admPainel();
+  setTimeout(()=>carregarAdmin(), 0);
+  return `<button class="back" data-a="go" data-v="hoje">${ICON.back} Voltar ao app</button>
+    <header class="top" style="margin-top:4px"><h1 class="h1">${ICON.shield} Admin</h1><span class="top-r">${statusPill()}</span></header>
+    <div class="seg four" role="tablist" aria-label="Seções do admin">${tabs}</div>${corpo}`;
+}
+function carregandoAdm(){ return '<div class="center-mini"><div class="spin" aria-hidden="true"></div></div>'; }
+function admPainel(){
+  const A = S.adm, r = A.resumo, ia = A.ia, dp = A.disp;
+  if(!r && !A.resumoErr) return carregandoAdm();
+  const linhas = [];
+  linhas.push(A.resumoErr ? linhaSaude('err', 'Servidor e banco de dados', 'Não respondeu. Confira a internet ou o painel do Supabase.')
+    : linhaSaude(r.ms>2500?'warn':'ok', 'Servidor e banco de dados', `Respondeu em ${r.ms} ms.`));
+  if(r) linhas.push(linhaSaude('ok', 'Login e contas', `${r.usuarios} ${r.usuarios===1?'conta':'contas'} · ${r.ativos_7d} ${r.ativos_7d===1?'pessoa treinou':'pessoas treinaram'} nos últimos 7 dias.`));
+  if(ia){
+    if(ia.erro) linhas.push(linhaSaude('warn', 'Leitura de fichas e avaliações', 'Não consegui verificar agora ('+esc(ia.erro)+').'));
+    else if(!ia.chave) linhas.push(linhaSaude('err', 'Leitura de fichas e avaliações', 'Desligada: falta a chave <b>ANTHROPIC_API_KEY</b> em Supabase › Edge Functions › Secrets. Sem ela, mandar foto ou PDF não funciona.'));
+    else if(!ia.valida) linhas.push(linhaSaude('err', 'Leitura de fichas e avaliações', 'A chave foi recusada (código '+esc(ia.http)+'). Gere uma chave nova no console da Anthropic e troque o secret.'));
+    else linhas.push(linhaSaude('ok', 'Leitura de fichas e avaliações', 'Funcionando · modelo '+esc(ia.modelo)+'.'));
+  }
+  if(r){
+    const pct = r.fotos_mb/1024*100;
+    linhas.push(linhaSaude(pct>80?'warn':'ok', 'Armazenamento de fotos', `${r.fotos} ${r.fotos===1?'arquivo':'arquivos'} · ${fmtN(r.fotos_mb,1)} MB de 1 GB do plano grátis.`));
+    linhas.push(linhaSaude(r.erros_24h>0?'warn':'ok', 'Erros no app', r.erros_24h>0 ? `${r.erros_24h} nas últimas 24 h (${r.erros_7d} em 7 dias). <button class="link" data-a="adm-tab" data-t="erros">Ver erros</button>` : `Nenhum nas últimas 24 h${r.erros_7d?' ('+r.erros_7d+' em 7 dias)':''}.`));
+  }
+  if(dp) linhas.push(linhaSaude(dp.sw ? (dp.pendentes ? 'warn':'ok') : 'warn', 'Este aparelho',
+    `Versão ${esc(dp.versao)} · ${dp.online?'online':'sem internet'} · ${dp.sw ? 'pronto para usar offline ('+dp.cache+' arquivos guardados)' : 'modo offline ainda não ativado (abra o app de novo)'}${dp.pendentes ? ' · <b>'+dp.pendentes+' treino(s) esperando envio</b>' : ''}${dp.uso!=null ? ' · '+fmtN(dp.uso/1048576,1)+' MB usados' : ''}.`));
+  const n = r ? `<div class="kgrid">
+      ${[['Contas',r.usuarios],['Ativos 7 dias',r.ativos_7d],['Treinos 7 dias',r.treinos_7d],['Treinos 30 dias',r.treinos_30d],['Treinos no total',r.treinos],['Fichas',r.fichas],['Avaliações',r.avaliacoes],['Grupos',r.grupos],['Vídeos',r.videos]]
+        .map(([k,v])=>`<div class="tile"><div class="k">${k}</div><div class="v">${fmtInt(v)}</div></div>`).join('')}</div>` : '';
+  return `<section class="card"><div class="card-h"><h2 class="h2">Saúde do sistema</h2><button class="link" data-a="adm-check">Verificar de novo</button></div>${linhas.join('')}
+      ${r?`<p class="note">Verificado às ${hhmm(Date.parse(r.agora))}.</p>`:''}</section>
+    ${n?`<h2 class="h2" style="margin:18px 2px 10px">Números</h2>${n}`:''}
+    <section class="card" style="margin-top:14px"><h2 class="h2">Atalhos</h2>
+      <div class="btns">
+        <a class="btn" href="https://supabase.com/dashboard/project/fiewzckxrqaprybzynoc" target="_blank" rel="noopener">Painel do Supabase (banco e contas)</a>
+        <a class="btn" href="https://supabase.com/dashboard/project/fiewzckxrqaprybzynoc/functions/secrets" target="_blank" rel="noopener">Secrets das Edge Functions</a>
+        <a class="btn" href="https://vercel.com/dashboard" target="_blank" rel="noopener">Painel da Vercel (publicação)</a>
+      </div></section>`;
+}
+function admUsuarios(){
+  const U = S.adm.usuarios;
+  if(!U) return S.adm.usuariosErr ? '<div class="empty"><b>Não consegui carregar</b>Confira a internet e toque em Usuários de novo.</div>' : carregandoAdm();
+  const dt = ts=>ts ? fmtDate(Date.parse(ts)) : '—';
+  return `<p class="note" style="margin:0 2px 12px">Você vê dados de uso e as fichas. Peso, medidas e fotos de cada pessoa continuam privados.</p>` + U.map(u=>{
+    const ult = u.ultimo_treino ? agoTxt(Date.parse(u.ultimo_treino)) : 'nunca';
+    return `<section class="card ucard">
+      <div class="uc-h"><span class="avatar">${esc(iniciais(u.nome||u.email))}</span><div><b>${esc(u.nome||'Sem nome')}${u.user_id===UID?' (você)':''}</b><small>${esc(u.email||'')}</small></div>
+        ${u.admin?'<span class="chip ok">Admin</span>':''}${!u.confirmado?'<span class="chip warn">E-mail não confirmado</span>':''}</div>
+      <div class="uc-g">
+        <span><small>Treinos</small><b>${fmtInt(u.treinos)}</b></span><span><small>30 dias</small><b>${fmtInt(u.treinos_30d)}</b></span>
+        <span><small>Último treino</small><b>${esc(ult)}</b></span><span><small>Último login</small><b>${esc(u.ultimo_login ? agoTxt(Date.parse(u.ultimo_login)) : 'nunca')}</b></span></div>
+      <p class="note" style="margin-top:8px">Ficha: <b>${esc(u.ficha||'nenhuma')}</b> · Grupo: <b>${esc(u.grupo||'nenhum')}</b> · Conta criada em ${esc(dt(u.criado_em))}</p>
+      <div class="btns two" style="margin-top:10px"><button class="btn sm" data-a="adm-fichas" data-id="${esc(u.user_id)}">${ICON.edit} Fichas</button>
+        <button class="btn sm ghost" data-a="adm-senha" data-u="${esc(u.user_id)}">Link de nova senha</button></div>
+    </section>`;
+  }).join('') + `<p class="note">Para alguém novo entrar, a pessoa cria a conta no próprio app. Para apagar uma conta, use o painel do Supabase › Authentication.</p>`;
+}
+async function admFichasSheet(uid){
+  const u = admUser(uid), nome = u.nome || u.email;
+  openSheet(`<h2>Fichas de ${esc(nome)}</h2>${carregandoAdm()}`);
+  let F;
+  try{ F = await D.adminFichas(uid); (S.adm.fichas = S.adm.fichas || {})[uid] = F; }
+  catch(e){ openSheet(`<h2>Fichas de ${esc(nome)}</h2><p>Não consegui carregar agora.</p><div class="btns"><button class="btn ghost" data-a="close">Fechar</button></div>`); return; }
+  const rows = F.slice().reverse().map(f=>`<div class="frow-f${f.ativa?' on':''}"><span><b>${esc(f.nome)}</b><small>${(f.order||[]).length} treinos${f.ativa?' · em uso':''}</small></span>
+    <span class="ff-b"><button class="btn sm" data-a="adm-f-edit" data-u="${esc(uid)}" data-id="${esc(f.id)}">Editar</button>${f.ativa?'':`<button class="btn sm ghost" data-a="adm-f-usar" data-u="${esc(uid)}" data-id="${esc(f.id)}">Usar</button>`}</span></div>`).join('');
+  openSheet(`<h2>Fichas de ${esc(nome)}</h2><p>O que você salvar aqui aparece para ${esc(nome)} na próxima vez que abrir o app.</p>
+    ${rows ? `<div class="flist">${rows}</div>` : '<p class="note">Ainda não tem ficha.</p>'}
+    <h3 class="h3">Criar ficha nova para ${esc(nome)}</h3>
+    <div class="btns"><button class="btn" data-a="adm-f-foto" data-u="${esc(uid)}">${ICON.doc} Ler foto ou PDF da ficha do personal</button>
+      <button class="btn" data-a="adm-f-modelo" data-u="${esc(uid)}">Começar pela ficha modelo A–E</button>
+      <button class="btn ghost" data-a="close">Fechar</button></div>`);
+}
+function admEditarFicha(uid, id){
+  const f = ((S.adm.fichas||{})[uid]||[]).find(x=>x.id===id); if(!f) return;
+  const u = admUser(uid);
+  closeSheet(true);
+  abrirEditor({ id:f.id, nome:f.nome, order:f.order.slice(), w:copia(f.w), sched:Object.assign({}, f.sched), dono:{id:uid, nome:u.nome||u.email} }, 'admin');
+}
+function admConteudo(){
+  const A = S.adm, Av = A.avisos;
+  const lista = !Av ? (A.avisosErr ? '<p class="note">Não consegui carregar os avisos.</p>' : carregandoAdm())
+    : Av.length ? Av.map(a=>{ const vencido = a.expira && a.expira<Date.now(); const st = !a.ativo ? 'Pausado' : vencido ? 'Expirado' : 'No ar';
+        return `<div class="avrow${a.ativo&&!vencido?' on':''}"><span class="av-i" aria-hidden="true">${AV_ICO[a.nivel]||'📣'}</span><div><p>${esc(a.texto)}</p>
+          <small>${st} · criado ${esc(fmtDate(a.t))}${a.expira?' · até '+esc(fmtDate(a.expira)):''}</small></div>
+          <span class="avrow-b"><button class="mini" data-a="adm-aviso-on" data-id="${esc(a.id)}" data-v="${a.ativo?'0':'1'}">${a.ativo?'Pausar':'Ativar'}</button><button class="mini del wide" data-a="adm-aviso-del" data-id="${esc(a.id)}" aria-label="Apagar aviso">×</button></span></div>`; }).join('')
+    : '<p class="note">Nenhum aviso ainda.</p>';
+  const nv = Object.keys(VIDEOS).length;
+  return `<section class="card"><h2 class="h2">Aviso para todos</h2>
+      <p class="note" style="margin-top:0">Aparece no topo da tela Hoje de todo mundo. Cada pessoa pode fechar o seu.</p>
+      <textarea class="notes" id="av-txt" maxlength="400" placeholder="Ex.: Academia fechada no feriado de sexta. Treino D fica para sábado."></textarea>
+      <div class="frow2 lem" style="margin-top:10px"><label class="lbl-in"><span>Tipo</span><select class="inp" id="av-nivel"><option value="info">📣 Informação</option><option value="alerta">⚠️ Alerta</option><option value="festa">🎉 Comemoração</option></select></label>
+        <label class="lbl-in"><span>Fica no ar</span><select class="inp" id="av-dias"><option value="1">1 dia</option><option value="7" selected>7 dias</option><option value="30">30 dias</option><option value="0">Até eu tirar</option></select></label></div>
+      <button class="btn primary" data-a="adm-aviso" style="margin-top:12px">Publicar aviso</button>
+      <h3 class="h3">Avisos</h3>${lista}</section>
+    <section class="card" style="margin-top:12px"><h2 class="h2">Vídeos dos exercícios</h2>
+      <p class="note" style="margin-top:0">${nv} ${nv===1?'exercício tem':'exercícios têm'} vídeo. Os links valem para todos.</p>
+      <button class="btn" data-a="videos" style="margin-top:10px">${ICON.play} Editar vídeos</button></section>`;
+}
+async function publicarAviso(btn){
+  const texto = ($('#av-txt').value||'').trim();
+  if(!texto){ toast('Escreva o aviso.', true); return; }
+  const dias = +$('#av-dias').value;
+  btn.disabled = true;
+  try{
+    const a = await D.criarAviso({ texto, nivel: $('#av-nivel').value, expira: dias ? Date.now()+dias*864e5 : null });
+    AVISOS = [a].concat(AVISOS); S.adm.avisos = [a].concat(S.adm.avisos||[]);
+    render(); toast('Aviso publicado para todos.');
+  }catch(e){ btn.disabled = false; toast('Não consegui publicar agora.', true); }
+}
+function admErros(){
+  const E = S.adm.erros;
+  if(!E) return S.adm.errosErr ? '<div class="empty"><b>Não consegui carregar</b>Confira a internet.</div>' : carregandoAdm();
+  if(!E.length) return `<div class="empty"><b>Nenhum erro registrado</b>Quando algo der errado no celular de alguém, aparece aqui com a tela, a versão e o aparelho.</div>`;
+  const nomes = {}; (S.adm.usuarios||[]).forEach(u=>{ nomes[u.user_id] = u.nome || u.email; });
+  const ap = ua=>{ ua = ua||''; return /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Computador' : 'Outro'; };
+  return `<div class="btns" style="margin-bottom:12px"><button class="btn sm danger" data-a="adm-erros-limpar">Limpar todos os erros</button></div>` + E.map(e=>`<details class="erro"><summary>
+      <b>${esc(e.msg)}</b><small>${esc(fmtDate(Date.parse(e.created_at)))} ${hhmm(Date.parse(e.created_at))} · ${esc(nomes[e.user_id]||'alguém')} · tela ${esc(e.tela||'?')} · ${ap(e.aparelho)}</small></summary>
+      <pre>${esc((e.detalhe||'sem detalhes'))}\n\nVersão: ${esc(e.versao||'?')}\n${esc(e.aparelho||'')}</pre></details>`).join('');
 }
 
 /* ----- Treinos ----- */
@@ -1391,7 +1585,8 @@ async function readFicha(files){
     const f = fichaDaLeitura(out);
     S.busy = false; closeSheet(true);
     if(!f.order.length){ toast('Não encontrei treinos nesse arquivo. Tente uma foto mais nítida ou monte do zero.', true); return; }
-    f.aviso = 'Li '+f.order.length+' treinos da sua ficha. Confira nomes, séries, repetições e descansos antes de salvar.';
+    f.aviso = 'Li '+f.order.length+' treinos da ficha. Confira nomes, séries, repetições e descansos antes de salvar.';
+    if(S.admDono){ f.dono = S.admDono; S.admDono = null; }
     abrirEditor(f, 'onboarding');
   }catch(e){ S.busy = false; closeSheet(true); toast(erroLeitura(e && e.code)+' Você pode montar a ficha do zero.', true); }
 }
@@ -1456,6 +1651,7 @@ function perfilSheet(){
     <button class="btn" data-a="p-save" style="margin-top:10px">Salvar perfil</button>
     <div class="btns" style="margin-top:16px">
       <button class="btn" data-a="grupo">${ICON.users} Grupo da família${S.grupo?' · '+esc(S.grupo.nome):''}</button>
+      ${ADMIN?`<button class="btn adm" data-a="go-close" data-v="admin">${ICON.shield} Área do admin</button>`:''}
       ${EDITOR?`<button class="btn" data-a="videos">${ICON.play} Vídeos dos exercícios</button>`:''}
       ${FICHA?`<button class="btn" data-a="lembretes">${ICON.bell} Lembretes no calendário</button><button class="btn" data-a="f-edit">${ICON.edit} Editar ficha atual</button><button class="btn" data-a="fichas">Trocar de ficha</button>`:''}
       <button class="btn danger" data-a="sair">Sair da conta</button>
@@ -1575,6 +1771,22 @@ document.addEventListener('click', async e=>{
     case 'lembretes': closeSheet(true); if(FICHA) lembretesSheet(); break;
     case 'lem-go': baixarLembretes(); break;
     case 'videos': closeSheet(true); if(EDITOR) videosSheet(); break;
+    case 'aviso-x': { const vistos = LS.get(kAvisosVistos(), []); vistos.push(t.dataset.id); LS.set(kAvisosVistos(), vistos.slice(-50)); const c = t.closest('.aviso'); if(c) c.remove(); break; }
+    case 'adm-tab': S.admTab = t.dataset.t; ['usuariosErr','avisosErr','errosErr'].forEach(k=>{ S.adm[k] = false; }); render(); break;
+    case 'adm-check': S.adm = {}; render(); carregarAdmin(true); break;
+    case 'adm-fichas': admFichasSheet(t.dataset.id); break;
+    case 'adm-f-edit': admEditarFicha(t.dataset.u, t.dataset.id); break;
+    case 'adm-f-usar': { t.disabled = true; try{ await D.adminAtivarFicha(t.dataset.u, t.dataset.id); S.adm.usuarios = null; admFichasSheet(t.dataset.u); carregarAdmin(); toast('Ficha ativada.'); }catch(err){ t.disabled = false; toast('Não consegui agora.', true); } break; }
+    case 'adm-f-modelo': { const u = admUser(t.dataset.u); closeSheet(true); abrirEditor({nome:FICHA_MODELO.nome, order:FICHA_MODELO.order.slice(), w:copia(FICHA_MODELO.w), sched:Object.assign({}, FICHA_MODELO.sched), dono:{id:u.user_id, nome:u.nome||u.email}, aviso:'Ficha modelo. Ajuste e salve para '+(u.nome||u.email)+'.'}, 'admin'); break; }
+    case 'adm-f-foto': { const u = admUser(t.dataset.u); S.admDono = {id:u.user_id, nome:u.nome||u.email}; closeSheet(true); const f=$('#f-ficha'); f.value=''; f.click(); break; }
+    case 'adm-senha': { const u = admUser(t.dataset.u); if(S.confirmDel!=='senha-'+u.user_id){ S.confirmDel='senha-'+u.user_id; t.textContent='Toque de novo para enviar a '+u.email; break; }
+      t.disabled = true; try{ await D.enviarLinkSenha(u.email); toast('Link enviado para '+u.email+'.'); t.textContent='Link enviado'; }catch(err){ t.disabled = false; toast('Não consegui enviar agora. O Supabase limita alguns envios por hora.', true); } break; }
+    case 'adm-aviso': publicarAviso(t); break;
+    case 'adm-aviso-on': { t.disabled = true; try{ await D.mudarAviso(t.dataset.id, t.dataset.v==='1'); S.adm.avisos = null; await carregarAdmin(); }catch(err){ t.disabled = false; toast('Não consegui agora.', true); } break; }
+    case 'adm-aviso-del': if(S.confirmDel!=='av-'+t.dataset.id){ S.confirmDel='av-'+t.dataset.id; t.textContent='Apagar?'; break; }
+      try{ await D.apagarAviso(t.dataset.id); S.adm.avisos = null; AVISOS = AVISOS.filter(a=>a.id!==t.dataset.id); await carregarAdmin(); toast('Aviso apagado.'); }catch(err){ toast('Não consegui agora.', true); } break;
+    case 'adm-erros-limpar': if(S.confirmDel!=='erros'){ S.confirmDel='erros'; t.textContent='Toque de novo para apagar todos'; break; }
+      try{ await D.limparErros(); S.adm.erros = null; S.adm.resumo = null; await carregarAdmin(); toast('Registro de erros limpo.'); }catch(err){ toast('Não consegui agora.', true); } break;
     case 'v-save': salvarVideosSheet(t); break;
     case 'rest-add': if(S.rest){ unlockAudio(); S.rest.end = Math.max(Date.now()+1000, (S.rest.over?Date.now():S.rest.end) + (+t.dataset.s)*1000); if(S.rest.over){ S.rest.over=false; $('#rest').classList.remove('over'); } S.rest.total = Math.max(S.rest.total, (S.rest.end-Date.now())/1000); scheduleBeeps((S.rest.end-Date.now())/1000); tickRest(); } break;
     case 'rest-skip': stopRest(); break;
@@ -1639,9 +1851,9 @@ document.addEventListener('click', async e=>{
       abrirEditor(fichaAtualEditavel(), 'treinos'); break;
     case 'ob-modelo': abrirEditor({nome:FICHA_MODELO.nome, order:FICHA_MODELO.order.slice(), w:copia(FICHA_MODELO.w), sched:Object.assign({}, FICHA_MODELO.sched), aviso:'Esta é a ficha modelo. Ajuste o que quiser e salve.'}, 'onboarding'); break;
     case 'ob-zero': abrirEditor({nome:'Minha ficha', order:['A'], w:{A:{name:'Treino A', focus:'', rest:'', ex:[{n:'', s:3, r:[10,12], rest:60, inc:2, tip:''}]}}, sched:cronogramaPadrao(['A'])}, 'onboarding'); break;
-    case 'ob-foto': { const f=$('#f-ficha'); f.value=''; f.click(); break; }
+    case 'ob-foto': { S.admDono = null; const f=$('#f-ficha'); f.value=''; f.click(); break; }
     // editor
-    case 'f-cancel': S.edit = null; go(FICHA ? (S.editBack==='onboarding' ? 'treinos' : S.editBack) : 'onboarding'); break;
+    case 'f-cancel': if(S.edit && S.edit.dono){ S.edit = null; go('admin'); break; } S.edit = null; go(FICHA ? (S.editBack==='onboarding' ? 'treinos' : S.editBack) : 'onboarding'); break;
     case 'f-save': salvarEdicao(); break;
     case 'fx-add': { const L=t.dataset.l; S.edit.w[L].ex.push({n:'', parts:null, s:3, r:[10,12], rest:60, inc:2, tip:''}); render(); const c=$('#fw-'+L); if(c) c.querySelectorAll('.fx')[S.edit.w[L].ex.length-1]?.scrollIntoView({block:'center'}); break; }
     case 'fx-del': { const L=t.dataset.l, i=+t.dataset.i; S.edit.w[L].ex.splice(i,1); render(); break; }
@@ -1714,7 +1926,7 @@ async function carregar(silencioso){
   try{
     NOME = d.nome || NOME; AVATAR = d.avatar; INSTA = d.instagram; AVATAR_IMG = null;
     FICHAS = d.fichas; definirFicha();
-    VIDEOS = {}; (d.videos||[]).forEach(v=>{ VIDEOS[v.chave] = {nome:v.nome, video:v.video}; }); EDITOR = !!d.editor;
+    VIDEOS = {}; (d.videos||[]).forEach(v=>{ VIDEOS[v.chave] = {nome:v.nome, video:v.video}; }); EDITOR = !!(d.editor || d.admin); ADMIN = !!d.admin; AVISOS = d.avisos || [];
     S.pending = LS.get(kPending(), []);
     const ids = new Set(d.treinos.map(s=>s.id));
     S.pending = S.pending.filter(p=>!ids.has(p.id)); LS.set(kPending(), S.pending);
@@ -1759,7 +1971,7 @@ function entrar(user){
   carregar();
 }
 function sairLocal(){
-  UID = null; EMAIL=''; NOME=''; AVATAR=''; INSTA=''; AVATAR_IMG=null; FICHAS=[]; FICHA=null; VIDEOS={}; EDITOR=false;
+  UID = null; EMAIL=''; NOME=''; AVATAR=''; INSTA=''; AVATAR_IMG=null; FICHAS=[]; FICHA=null; VIDEOS={}; EDITOR=false; ADMIN=false; AVISOS=[]; S.adm={};
   Object.assign(S, {sessions:[], body:[], measures:[], photos:[], draft:null, pending:[], edit:null, exSel:null, mSel:null, grupo:null, grupoM:null, grupoErr:false, offline:false, sync:'ok'});
   stopRest(); closeSheet(true);
   S.auth='entrar'; S.authErr=''; S.authMsg='';

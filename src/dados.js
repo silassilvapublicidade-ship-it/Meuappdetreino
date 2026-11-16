@@ -34,7 +34,7 @@ function linhaParaFicha(r){
 
 // ---------- Carga inicial ----------
 export async function carregarTudo(uid){
-  const [perfil, fichas, treinos, peso, aval, fotos, rascunho, videos, editor] = await Promise.all([
+  const [perfil, fichas, treinos, peso, aval, fotos, rascunho, videos, editor, admin, avisos] = await Promise.all([
     sb.from('profiles').select('nome,avatar_path,instagram').eq('id', uid).maybeSingle().then(ok),
     sb.from('plans').select('*').order('created_at', { ascending: true }).then(ok),
     sb.from('sessions').select('*').order('started_at', { ascending: false }).limit(1000).then(ok),
@@ -43,7 +43,9 @@ export async function carregarTudo(uid){
     sb.from('photos').select('id,d,pose,path').order('d', { ascending: true }).then(ok),
     sb.from('drafts').select('data,updated_at').eq('user_id', uid).maybeSingle().then(ok),
     sb.from('exercise_videos').select('chave,nome,video').then(ok),
-    sb.from('video_editores').select('user_id').eq('user_id', uid).then(ok)
+    sb.from('video_editores').select('user_id').eq('user_id', uid).then(ok),
+    sb.from('app_admins').select('user_id').eq('user_id', uid).then(ok),
+    sb.from('app_avisos').select('id,texto,nivel,ativo,expira_em,created_at').order('created_at', { ascending: false }).then(ok)
   ]);
   return {
     nome: perfil && perfil.nome || '',
@@ -56,7 +58,9 @@ export async function carregarTudo(uid){
     fotos: (fotos || []).map(f => ({ id: f.id, d: f.d, pose: f.pose, path: f.path })),
     rascunho: rascunho ? rascunho.data : null,
     videos: (videos || []).map(v => ({ chave: v.chave, nome: v.nome, video: v.video })),
-    editor: !!(editor && editor.length)
+    editor: !!(editor && editor.length),
+    admin: !!(admin && admin.length),
+    avisos: (avisos || []).map(linhaParaAviso)
   };
 }
 
@@ -194,3 +198,28 @@ export async function exerciciosDaFamilia(){
   if(error) throw error;
   return (data || []).map(r => r.nome).filter(Boolean);
 }
+
+// ---------- Área do admin ----------
+function linhaParaAviso(a){ return { id: a.id, texto: a.texto, nivel: a.nivel, ativo: a.ativo, expira: a.expira_em ? Date.parse(a.expira_em) : null, t: Date.parse(a.created_at) }; }
+async function rpc(nome, args){ const { data, error } = await sb.rpc(nome, args || {}); if(error) throw error; return data; }
+export async function adminResumo(){ const t0 = performance.now(); const r = await rpc('admin_resumo'); return { ...r, ms: Math.round(performance.now() - t0) }; }
+export async function adminUsuarios(){ return (await rpc('admin_usuarios')) || []; }
+export async function adminFichas(uid){ return ((await rpc('admin_fichas', { p_user: uid })) || []).map(linhaParaFicha); }
+export async function adminSalvarFicha(uid, id, nome, json){
+  const r = await rpc('admin_salvar_ficha', { p_user: uid, p_id: id || null, p_nome: nome, p_treinos: json.treinos, p_cronograma: json.cronograma });
+  return linhaParaFicha(Array.isArray(r) ? r[0] : r);
+}
+export async function adminAtivarFicha(uid, id){ await rpc('admin_ativar_ficha', { p_user: uid, p_id: id }); }
+export async function listarAvisos(){ return (ok(await sb.from('app_avisos').select('id,texto,nivel,ativo,expira_em,created_at').order('created_at', { ascending: false })) || []).map(linhaParaAviso); }
+export async function criarAviso(a){ return linhaParaAviso(ok(await sb.from('app_avisos').insert({ texto: a.texto, nivel: a.nivel, expira_em: a.expira ? new Date(a.expira).toISOString() : null }).select().single())); }
+export async function mudarAviso(id, ativo){ ok(await sb.from('app_avisos').update({ ativo }).eq('id', id)); }
+export async function apagarAviso(id){ ok(await sb.from('app_avisos').delete().eq('id', id)); }
+export async function listarErros(){ return ok(await sb.from('app_erros').select('id,user_id,msg,detalhe,tela,versao,aparelho,created_at').order('created_at', { ascending: false }).limit(100)) || []; }
+export async function limparErros(){ ok(await sb.from('app_erros').delete().gt('id', 0)); }
+export async function registrarErro(uid, e){ try{ await sb.from('app_erros').insert({ user_id: uid, ...e }); }catch(x){} }
+export async function statusLeitura(){
+  const { data, error } = await sb.functions.invoke('ler-documento', { body: { tipo: 'status' } });
+  if(error){ let c = 'falha'; try{ const b = await error.context.json(); c = b.error || c; }catch(x){ if(error.name === 'FunctionsFetchError') c = 'rede'; } return { erro: c }; }
+  return data;
+}
+export async function enviarLinkSenha(email){ const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin }); if(error) throw error; }

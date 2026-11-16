@@ -81,7 +81,7 @@ const S = {
   evoTab:'cargas', mreview:null, pnew:null, pslot:null, cmp:{pose:'frente', a:null, b:null}, busy:false,
   edit:null, editBack:'treinos', loadErr:'',
   grupo:null, grupoM:null, grupoErr:false, offline:false,
-  admTab:'painel', adm:{}, admDono:null, reacoes:[], editS:null, cdTipo:null
+  admTab:'painel', adm:{}, admDono:null, reacoes:[], editS:null, cdTipo:null, vivo:null
 };
 /* ---------- Cardio ---------- */
 const CARDIO_TIPOS = ['Esteira','Corrida na rua','Caminhada','Bicicleta','Elíptico','Escada','Remo','Air bike','Outro'];
@@ -291,6 +291,8 @@ function render(){
     const cur = v===t || (t==='treinos' && v.indexOf('treino:')===0);
     if(cur) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
   });
+  if(v==='sessao' && S.draft) pedirTelaAcesa(); else soltarTela();
+  if((v==='sessao'||v==='hoje') && S.grupo && vivoTimer && !S.vivo) atualizarVivo(true);
   renderStatus(); renderLive(); tickClock();
   if(v==='sessao') updateProgress();
   hidratarFotos();
@@ -666,10 +668,101 @@ function nivelStrip(){
 function arroba(ig){ return ig ? `<span class="ig">@${esc(ig)}</span>` : ''; }
 function miniAvatar(path, nome, cls){ return `<span class="avatar ${cls||'xs'}" aria-hidden="true">${path?`<img data-path="${esc(path)}" alt="">`:esc(iniciais(nome))}</span>`; }
 function iniciais(n){ return (n||'?').trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase(); }
+/* ----- Treino em grupo ao vivo ----- */
+// A cada poucos segundos (só com o app aberto) busca quem do grupo está treinando e quantas
+// séries de cada exercício já fez. Mostra no topo do treino, em cada exercício e no card do grupo.
+const VIVO_MS = 15000;
+let vivoTimer = null, vivoN = 0, vivoBuscando = false;
+function primeiroNome(n){ const p = String(n||'').trim().split(/\s+/)[0] || 'Alguém'; return p.charAt(0).toUpperCase()+p.slice(1).toLowerCase(); }
+function pessoaGrupo(uid){ return (S.grupoM||[]).find(m=>m.uid===uid) || {nome:'Alguém', avatar:'', insta:''}; }
+function vivosOutros(){ return S.vivo ? S.vivo.filter(v=>v.uid!==UID && v.letra && v.ex.length) : []; }
+function exAtual(v){ return v.ex.find(e=>e.f>0 && e.f<e.t) || v.ex.find(e=>e.f<e.t) || null; }
+function feitosVivo(v){ return v.ex.filter(e=>e.t && e.f>=e.t).length; }
+function iniciarVivo(){
+  if(vivoTimer) return;
+  vivoTimer = setInterval(()=>{ vivoN++; atualizarVivo(); }, VIVO_MS);
+  atualizarVivo();
+}
+function pararVivo(){ clearInterval(vivoTimer); vivoTimer = null; S.vivo = null; }
+async function atualizarVivo(forcar){
+  if(!S.grupo || !UID || vivoBuscando || document.hidden || !navigator.onLine) return;
+  const naSessao = S.view==='sessao', naHoje = S.view==='hoje';
+  if(!forcar && !naSessao && !naHoje) return;
+  // fora do treino, só olha com mais frequência se alguém estiver treinando
+  if(!forcar && naHoje && !vivosOutros().length && vivoN % 4) return;
+  vivoBuscando = true;
+  try{
+    const novo = await D.aoVivoGrupo(S.grupo.id);
+    avisarVivo(S.vivo, novo);
+    const antes = vivosOutros().map(v=>v.uid+v.letra).join();
+    S.vivo = novo;
+    const depois = vivosOutros().map(v=>v.uid+v.letra).join();
+    if(S.view==='sessao') atualizarVivoSessao();
+    else if(S.view==='hoje' && (antes!==depois || vivosOutros().length)) atualizarVivoHoje();
+  }catch(e){}
+  vivoBuscando = false;
+}
+function avisarVivo(ant, novo){
+  if(!ant) return; // primeira busca: não avisa o que já tinha acontecido
+  const msgs = [];
+  novo.forEach(v=>{
+    if(v.uid===UID) return;
+    const a = ant.find(x=>x.uid===v.uid); if(!a) return;
+    const nome = primeiroNome(pessoaGrupo(v.uid).nome);
+    if(v.letra && a.letra===v.letra){
+      v.ex.forEach((e,i)=>{ const ae = a.ex[i]; if(e.t && e.f>=e.t && ae && ae.f<ae.t) msgs.push(`${nome} terminou ${e.n.toLowerCase()} 💪`); });
+    }
+    if(!v.letra && a.letra && v.fim && v.fim > (a.at||0) - 60000) msgs.push(`${nome} finalizou o Treino ${v.fimLetra || a.letra} 🎉`);
+    else if(v.letra && !a.letra) msgs.push(`${nome} começou o Treino ${v.letra}`);
+  });
+  if(msgs.length){ toast(msgs.slice(0,2).join(' · ')); try{ navigator.vibrate && navigator.vibrate(60); }catch(e){} }
+}
+function vivoBarra(){
+  const vs = vivosOutros(); if(!vs.length) return '';
+  return `<button class="vivo-bar" data-a="vivo"><span class="vivo-l"><span class="vivo-dot" aria-hidden="true"></span>Ao vivo</span>
+    <span class="vivo-ps">${vs.map(v=>{ const p = pessoaGrupo(v.uid), at = exAtual(v);
+      return `<span class="vivo-p">${miniAvatar(p.avatar, p.nome)}<span><b>${esc(primeiroNome(p.nome))}</b> ${feitosVivo(v)}/${v.ex.length}${at?` · ${esc(at.n)}`:' · finalizando'}</span></span>`; }).join('')}</span>
+    <span class="chev" aria-hidden="true">›</span></button>`;
+}
+function vivoDoEx(e){
+  const k = chaveVideo(e.n), out = [];
+  vivosOutros().forEach(v=>{
+    const x = v.ex.find(y=>chaveVideo(y.n)===k); if(!x || !x.f) return;
+    const nome = primeiroNome(pessoaGrupo(v.uid).nome);
+    out.push(x.f>=x.t ? `<span class="vx ok">✓ ${esc(nome)}</span>` : `<span class="vx">${esc(nome)} ${x.f}/${x.t}</span>`);
+  });
+  return out.join('');
+}
+function atualizarVivoSessao(){
+  const bar = $('#vivo-bar'); if(bar) bar.innerHTML = vivoBarra();
+  if(S.draft) S.draft.w.ex.forEach((e,i)=>{ const el = $('#vivo-ex-'+i); if(el) el.innerHTML = vivoDoEx(e); });
+  hidratarFotos();
+}
+function atualizarVivoHoje(){
+  const card = $('#grupo-card'); if(!card) return;
+  card.outerHTML = grupoCard(); hidratarFotos();
+}
+function vivoTag(uid){
+  if(uid===UID || !S.vivo) return '';
+  const v = S.vivo.find(x=>x.uid===uid); if(!v) return '';
+  if(v.letra && v.ex.length) return `<span class="vivo-tag"><span class="vivo-dot" aria-hidden="true"></span>Treinando agora · ${feitosVivo(v)}/${v.ex.length}</span>`;
+  return '';
+}
+function vivoSheet(){
+  const vs = vivosOutros();
+  if(!vs.length){ openSheet(`<h2>Ao vivo</h2><p>Ninguém do grupo está treinando agora.</p><div class="btns"><button class="btn ghost" data-a="close">Fechar</button></div>`); return; }
+  openSheet(`<p class="eyebrow"><span class="dot"></span> Ao vivo</p><h2 style="margin-top:6px">Treinando agora</h2>
+    ${vs.map(v=>{ const p = pessoaGrupo(v.uid), m0 = v.inicio ? Math.max(1, Math.round((Date.now()-v.inicio)/60000)) : 0, min = m0 < 300 ? m0 : 0;
+      return `<div class="vivo-pess"><div class="vivo-h">${miniAvatar(p.avatar, p.nome, 'sm')}<span><b>${esc(p.nome||'Alguém')}</b>${arroba(p.insta)}<small>Treino ${esc(v.letra)} · ${esc(v.treino)}${min?` · ${min} min`:''}</small></span></div>
+        <ol class="vivo-ex">${v.ex.map(e=>`<li class="${e.t && e.f>=e.t?'ok':e.f?'meio':''}"><span>${esc(e.n)}</span><b>${e.t && e.f>=e.t?'✓':`${e.f}/${e.t}`}</b></li>`).join('')}</ol></div>`; }).join('')}
+    <p class="note">Aparece só o andamento das séries. As cargas continuam só de cada um.</p>
+    <div class="btns"><button class="btn ghost" data-a="close">Fechar</button></div>`);
+  hidratarFotos();
+}
 function grupoCard(){
   if(!S.grupo){
     if(S.grupoErr) return '';
-    return `<div class="section"><button class="gcta" data-a="grupo"><span class="ci">${ICON.users}</span><span><b>Treinar junto com a família</b><small>Crie um grupo e vejam quem treinou na semana.</small></span><span class="chev" aria-hidden="true">›</span></button></div>`;
+    return `<div class="section" id="grupo-card"><button class="gcta" data-a="grupo"><span class="ci">${ICON.users}</span><span><b>Treinar junto com a família</b><small>Crie um grupo e vejam quem treinou na semana.</small></span><span class="chev" aria-hidden="true">›</span></button></div>`;
   }
   let corpo;
   if(!S.grupoM) corpo = `<p class="note" style="margin:0">${S.grupoErr ? 'Sem conexão para atualizar o grupo agora.' : 'Carregando…'}</p>`;
@@ -688,14 +781,14 @@ function grupoCard(){
     corpo = linhas.map(m=>`<div class="gm${m.eu?' eu':''}">
       <span class="avatar sm" aria-hidden="true">${m.avatar?`<img data-path="${esc(m.avatar)}" alt="">`:esc(iniciais(m.nome))}</span>
       <span class="gm-n"><b>${esc(m.eu ? 'Você' : (m.nome||'Sem nome'))}${m.nSem===topo?' <span title="Mais dias na semana">👑</span>':''}</b>${arroba(m.eu ? INSTA : m.insta)}
-        <small>${m.nMes} ${m.nMes===1?'dia':'dias'} no mês${m.seq?' · 🔥 '+m.seq+(m.seq===1?' semana':' semanas'):''}</small></span>
+        <small>${m.nMes} ${m.nMes===1?'dia':'dias'} no mês${m.seq?' · 🔥 '+m.seq+(m.seq===1?' semana':' semanas'):''}</small>${vivoTag(m.uid)}</span>
       <span class="gm-dots" aria-label="${m.nSem} ${m.nSem===1?'dia':'dias'} de treino nesta semana">${m.dots.map(x=>`<i class="${x.feito?'on':''}${x.hoje?' hj':''}${x.fut?' fut':''}"></i>`).join('')}</span>
       <span class="gm-c" aria-hidden="true">${m.nSem}</span>${linhaReacoes(m)}</div>`).join('');
   }
-  return `<div class="section"><div class="card-h"><h2 class="h2">${esc(S.grupo.nome)}</h2><button class="link" data-a="grupo">${ICON.users} Convidar</button></div>
+  return `<div class="section" id="grupo-card"><div class="card-h"><h2 class="h2">${esc(S.grupo.nome)}</h2><button class="link" data-a="grupo">${ICON.users} Convidar</button></div>
     <section class="card gcard">${corpo}<p class="note gfoot">Ranking pelos dias de treino da semana. Semana ativa = 3 ou mais dias.</p></section></div>`;
 }
-const AVISO_GRUPO = `<p class="note">No grupo, os outros veem só seu nome, foto, @ e os dias em que você treinou. Cargas, peso, medidas e fotos de evolução continuam só seus.</p>`;
+const AVISO_GRUPO = `<p class="note">No grupo, os outros veem só seu nome, foto, @, os dias em que você treinou e, enquanto você treina, quais exercícios já fez. Cargas, peso, medidas e fotos de evolução continuam só seus.</p>`;
 function grupoSheet(){
   if(S.grupo){
     openSheet(`<h2>${esc(S.grupo.nome)}</h2><p>Para alguém entrar, a pessoa cria a conta dela no app e usa este código em <b>Perfil › Grupo da família</b>:</p>
@@ -723,6 +816,7 @@ async function carregarGrupo(){
     S.reacoes = S.grupo ? await D.listarReacoes(chaveDia(startOfWeek(Date.now()))).catch(()=>[]) : [];
     avisarReacoesNovas();
     S.grupoErr = false; LS.set(kGrupo(), {g:S.grupo, m:S.grupoM});
+    if(S.grupo) iniciarVivo(); else pararVivo();
   }catch(e){
     const c = LS.get(kGrupo(), null);
     if(c){ S.grupo = c.g; S.grupoM = c.m; } S.grupoErr = true;
@@ -1319,6 +1413,7 @@ function vSessao(){
       <div class="st"><b>${esc(d.w.name)}</b><small><span id="elapsed">0:00</span> · <span id="prog-txt"></span></small></div>
       <button class="iconbtn${S.sound?'':' off'}" data-a="sound" aria-label="${S.sound?'Desligar':'Ligar'} som do descanso">${S.sound?ICON.sound:ICON.mute}</button>
     </div><div class="prog"><i id="prog-bar"></i></div></div>
+    <div id="vivo-bar">${vivoBarra()}</div>
     ${blocoAquecimento(d.w)}
     <div class="exlist" style="margin-top:0">${ex}</div>
     <label class="lbl" for="notes">Observações</label>
@@ -1340,6 +1435,7 @@ function exCard(e, i){
     </div><button class="swapbtn" data-a="swap" data-ei="${i}" aria-label="Trocar ${esc(e.n)} por outro exercício">${ICON.swap}<span>Trocar</span></button></div>
     ${e.orig?`<p class="swapped">Substituído hoje (era <b>${esc(e.orig.n)}</b>) <button class="link" data-a="swap-undo" data-ei="${i}">Voltar ao original</button></p>`:''}
     ${e.tip?`<p class="tip"><b>Dica:</b> ${esc(e.tip)}</p>`:''}${videoLink(e)}
+    <div class="vivo-exl" id="vivo-ex-${i}">${vivoDoEx(e)}</div>
     ${sug ? `<p class="last">Última vez (${fmtDate(sug.le.s.start)}): ${lastSummary(sug.le.e, e)}</p>${sugBlock(sug, e)}` : ''}${avisoEstagnado(e)}
     <div class="sets" id="sets-${i}">${rows}</div>
     <button class="addset" data-a="addset" data-ei="${i}">+ Série extra</button>
@@ -1662,7 +1758,17 @@ setInterval(tickClock, 1000);
 function go(v){ S.view = v; render(); window.scrollTo(0,0); }
 function touchDraft(){ if(S.draft) S.draft.at = Date.now(); LS.set(kDraft(), S.draft); D.salvarRascunho(UID, S.draft); }
 let wakeLock = null;
-async function pedirTelaAcesa(){ try{ if(navigator.wakeLock && !wakeLock){ wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', ()=>{ wakeLock=null; }); } }catch(e){} }
+// Tela sempre acesa durante o treino: pede ao entrar na sessão, solta ao sair.
+// O sistema solta sozinho quando o app vai para segundo plano; ao voltar, pedimos de novo.
+let pedindoTela = false;
+async function pedirTelaAcesa(){
+  if(!navigator.wakeLock || wakeLock || pedindoTela || document.hidden) return;
+  pedindoTela = true;
+  try{ wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', ()=>{ wakeLock=null; }); }catch(e){}
+  pedindoTela = false;
+  if(S.view!=='sessao') soltarTela();
+}
+function soltarTela(){ if(wakeLock){ const w = wakeLock; wakeLock = null; w.release().catch(()=>{}); } }
 function startWorkout(L){
   if(S.draft && (S.draft.letter!==L || S.draft.planId!==FICHA.id)){
     openSheet(`<h2>Já existe um treino em andamento</h2><p>O Treino ${esc(S.draft.letter)} ainda não foi finalizado. O que você quer fazer?</p>
@@ -2247,6 +2353,7 @@ document.addEventListener('click', async e=>{
     case 'check': toggleSet(+t.dataset.ei, +t.dataset.si); break;
     case 'addset': addSet(+t.dataset.ei); break;
     case 'tecnica': tecnicaSheet(t.dataset.t); break;
+    case 'vivo': vivoSheet(); break;
     case 'swap': if(S.draft) swapSheet(+t.dataset.ei); break;
     case 'swap-go': { const v = $('#swap-n'); if(S.draft) swapEx(+t.dataset.ei, v ? v.value : ''); break; }
     case 'swap-undo': if(S.draft) undoSwap(+t.dataset.ei); break;
@@ -2419,7 +2526,7 @@ document.addEventListener('submit', e=>{
   else if(e.target.id==='f-nova') salvarNovaSenha();
 });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('#sheet').hidden) closeSheet(); });
-document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ guardarCache(); return; } if(!document.hidden){ tickRest(); tickClock(); if(S.draft && S.view==='sessao') pedirTelaAcesa(); } });
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ guardarCache(); return; } if(!document.hidden){ tickRest(); tickClock(); if(S.draft && S.view==='sessao') pedirTelaAcesa(); atualizarVivo(); } });
 window.addEventListener('online', ()=>{ if(!UID) return; if(S.offline) carregar(true); else { enviarPendentes(); carregarGrupo(); } });
 window.addEventListener('offline', ()=>{ if(UID){ S.sync = 'offline'; renderStatus(); } });
 
@@ -2490,7 +2597,7 @@ function entrar(user){
 function sairLocal(){
   UID = null; EMAIL=''; NOME=''; AVATAR=''; INSTA=''; AVATAR_IMG=null; FICHAS=[]; FICHA=null; VIDEOS={}; EDITOR=false; ADMIN=false; AVISOS=[]; S.adm={};
   Object.assign(S, {sessions:[], body:[], measures:[], photos:[], draft:null, pending:[], edit:null, exSel:null, mSel:null, grupo:null, grupoM:null, grupoErr:false, offline:false, sync:'ok'});
-  stopRest(); closeSheet(true);
+  stopRest(); closeSheet(true); pararVivo(); soltarTela();
   S.auth='entrar'; S.authErr=''; S.authMsg='';
   S.view = 'auth'; render();
 }

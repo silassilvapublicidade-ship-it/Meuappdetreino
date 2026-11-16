@@ -193,6 +193,18 @@ export async function resumoGrupo(id){
   return (data || []).map(m => ({ uid: m.user_id, nome: m.nome || '', avatar: m.avatar_path || '', insta: m.instagram || '', dias: (m.dias || []).map(String) }));
 }
 
+// Treino ao vivo do grupo: quem está treinando agora e quantas séries de cada exercício já fez (sem cargas)
+export async function aoVivoGrupo(id){
+  const { data, error } = await sb.rpc('grupo_ao_vivo', { p_grupo: id });
+  if(error) throw erroRpc(error);
+  return (data || []).map(m => ({
+    uid: m.user_id, letra: m.letra || '', treino: m.treino || '',
+    inicio: m.inicio ? Date.parse(m.inicio) : 0, at: m.atualizado ? Date.parse(m.atualizado) : 0,
+    ex: (m.exercicios || []).map(e => ({ n: e.n || '', f: +e.f || 0, t: +e.t || 0 })),
+    fim: m.terminou ? Date.parse(m.terminou) : 0, fimLetra: m.terminou_letra || ''
+  }));
+}
+
 // ---------- Vídeos dos exercícios (só o editor grava) ----------
 export async function salvarVideos(lista){ if(lista.length) ok(await sb.from('exercise_videos').upsert(lista.map(v => ({ chave: v.chave, nome: v.nome, video: v.video, updated_at: new Date().toISOString() })), { onConflict: 'chave' })); }
 export async function apagarVideos(chaves){ if(chaves.length) ok(await sb.from('exercise_videos').delete().in('chave', chaves)); }

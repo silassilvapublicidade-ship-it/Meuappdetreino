@@ -7,8 +7,9 @@ import '@fontsource/bebas-neue/400.css';
 import './style.css';
 import {
   LETRAS, DIAS, SEMANA, WD, FICHA_MODELO, MKEYS, MORDER, MHEAD, MMANUAL, POSES,
-  slug, prepararFicha, fichaParaSalvar, fichaDaLeitura, cronogramaPadrao, chutarAumento, copia
+  slug, prepararFicha, fichaParaSalvar, fichaDaLeitura, cronogramaPadrao, chutarAumento, copia, linkOk
 } from './modelo.js';
+import { calcular as calcConquistas, nivel, semanasAtivas, chaveDia, NIVEIS } from './conquistas.js';
 import * as D from './dados.js';
 import { desenharSemana, desenharMes } from './cartao.js';
 
@@ -45,7 +46,11 @@ const ICON = {
   doc:'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>',
   cam:'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   share:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>',
-  edit:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>'
+  edit:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>',
+  play:'<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>',
+  swap:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 004 0"/></svg>',
+  users:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.8a3.3 3.3 0 010 6.4M18.2 14.8c1.9.7 3 2.4 3.3 5.2"/></svg>'
 };
 
 /* ---------- Armazenamento local (por usuário) ---------- */
@@ -65,8 +70,16 @@ const S = {
   sessions:[], body:[], measures:[], photos:[], draft:null, pending:[],
   sync:'ok', rest:null, exSel:null, mSel:null, sound:LS.get('mt.sound', true), confirmDel:null,
   evoTab:'cargas', mreview:null, pnew:null, pslot:null, cmp:{pose:'frente', a:null, b:null}, busy:false,
-  edit:null, editBack:'treinos', loadErr:''
+  edit:null, editBack:'treinos', loadErr:'',
+  grupo:null, grupoM:null, grupoErr:false, offline:false
 };
+const kDados = ()=>'mt.dados.'+UID;
+function metaSemana(){ return FICHA ? (SEMANA.filter(dd=>FICHA.W[FICHA.sched[dd]]).length || FICHA.order.length) : 3; }
+function minhasConquistas(sessoes){
+  return calcConquistas(sessoes || S.sessions, { meta: metaSemana(),
+    avaliacoes: S.measures.map(m=>m.t || Date.parse(m.d+'T12:00')), fotos: S.photos.map(f=>Date.parse(f.d+'T12:00')) });
+}
+function videoLink(e){ return e.video ? `<a class="vlink" href="${esc(e.video)}" target="_blank" rel="noopener noreferrer">${ICON.play} Ver execução</a>` : ''; }
 
 function definirFicha(){
   const ativa = FICHAS.find(f=>f.ativa) || FICHAS[FICHAS.length-1] || null;
@@ -343,6 +356,7 @@ function vFicha(){
           <label><span>Descanso (s)</span><input class="inp sm" data-e="w.${L}.ex.${i}.rest" inputmode="numeric" value="${e.rest}"></label>
         </div>
         <textarea class="notes sm" data-e="w.${L}.ex.${i}.tip" placeholder="Dica de execução (opcional)" aria-label="Dica de execução">${esc(e.tip||'')}</textarea>
+        <label class="fld-at vid"><span>${ICON.play}</span><input class="inp sm" data-e="w.${L}.ex.${i}.video" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(e.video||'')}" placeholder="Link do vídeo de execução (opcional)" aria-label="Link do vídeo de execução"></label>
         <label class="chkline"><input type="checkbox" data-a="fx-bi" data-l="${L}" data-i="${i}"${bi?' checked':''}> Bi-set (dois exercícios sem descanso)</label>
       </div>`;
     }).join('');
@@ -388,6 +402,7 @@ function validarFicha(E){
       if(!nome) return 'Falta o nome do exercício '+(i+1)+' do treino '+L+'.';
       if(!(e.s>=1 && e.s<=10)) return 'Séries do exercício '+(i+1)+' do treino '+L+': use de 1 a 10.';
       if(!(e.r[0]>=1) || e.r[1]<e.r[0]) return 'Confira as repetições do exercício '+(i+1)+' do treino '+L+'.';
+      if(e.video && String(e.video).trim() && !linkOk(e.video)) return 'O link do vídeo do exercício '+(i+1)+' do treino '+L+' não parece um endereço válido.';
     }
   }
   return '';
@@ -475,7 +490,136 @@ function vHoje(){
     ${hero}
     <p class="todayline">${today}</p>
     <div class="section"><div class="card-h"><h2 class="h2">Esta semana</h2><button class="link" data-a="share" data-t="semana">${ICON.share} Compartilhar</button></div><div class="week">${cells}</div></div>
-    <div class="section">${tiles}</div>`;
+    <div class="section">${nivelStrip()}</div>
+    <div class="section">${tiles}</div>
+    ${grupoCard()}`;
+}
+function nivelStrip(){
+  const nv = nivel(S.sessions.length);
+  const sem = semanasAtivas(S.sessions.map(s=>chaveDia(s.start)));
+  const nc = minhasConquistas().filter(c=>c.at).length;
+  return `<button class="lvl" data-a="evo" data-t="conquistas" aria-label="Nível ${esc(nv.nome)}, ${sem} semanas ativas, ${nc} conquistas. Ver conquistas.">
+    <span class="lvl-fire${sem?'':' off'}"><span aria-hidden="true">🔥</span><b>${sem}</b><small>${sem===1?'semana ativa':'semanas ativas'}</small></span>
+    <span class="lvl-main"><span class="lvl-top"><b>Nível ${esc(nv.nome)}</b><small>${nv.prox ? 'faltam '+(nv.prox.n-nv.n)+' para '+esc(nv.prox.nome) : 'nível máximo'}</small></span>
+    <span class="bar"><i style="width:${Math.round(nv.pct*100)}%"></i></span>
+    <small class="lvl-c">🏅 ${nc} ${nc===1?'conquista':'conquistas'} · ver todas ›</small></span></button>`;
+}
+
+/* ----- Grupo da família ----- */
+function iniciais(n){ return (n||'?').trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase(); }
+function grupoCard(){
+  if(!S.grupo){
+    if(S.grupoErr) return '';
+    return `<div class="section"><button class="gcta" data-a="grupo"><span class="ci">${ICON.users}</span><span><b>Treinar junto com a família</b><small>Crie um grupo e vejam quem treinou na semana.</small></span><span class="chev" aria-hidden="true">›</span></button></div>`;
+  }
+  let corpo;
+  if(!S.grupoM) corpo = `<p class="note" style="margin:0">${S.grupoErr ? 'Sem conexão para atualizar o grupo agora.' : 'Carregando…'}</p>`;
+  else {
+    const agora = Date.now(), wk = startOfWeek(agora), hoje = chaveDia(agora), mes = hoje.slice(0,7);
+    const meus = S.sessions.map(x=>chaveDia(x.start));
+    const linhas = S.grupoM.map(m=>{
+      const eu = m.uid===UID;
+      const dias = eu ? [...new Set(m.dias.concat(meus))] : m.dias;
+      const set = new Set(dias);
+      const dots = SEMANA.map((wd,i)=>{ const dk = chaveDia(wk + i*864e5 + 12*36e5); return { feito:set.has(dk), hoje:dk===hoje, fut:dk>hoje }; });
+      return Object.assign({}, m, { eu, dots, nSem:dots.filter(x=>x.feito).length, nMes:[...set].filter(d=>d.slice(0,7)===mes).length, seq:semanasAtivas(dias, agora) });
+    }).sort((a,b)=> b.nSem-a.nSem || b.nMes-a.nMes || a.nome.localeCompare(b.nome));
+    const topo = linhas.length>1 && linhas[0].nSem>0 && linhas[1].nSem<linhas[0].nSem ? linhas[0].nSem : -1;
+    corpo = linhas.map(m=>`<div class="gm${m.eu?' eu':''}">
+      <span class="avatar sm" aria-hidden="true">${m.avatar?`<img data-path="${esc(m.avatar)}" alt="">`:esc(iniciais(m.nome))}</span>
+      <span class="gm-n"><b>${esc(m.eu ? 'Você' : (m.nome||'Sem nome'))}${m.nSem===topo?' <span title="Mais dias na semana">👑</span>':''}</b>
+        <small>${m.nMes} ${m.nMes===1?'dia':'dias'} no mês${m.seq?' · 🔥 '+m.seq+(m.seq===1?' semana':' semanas'):''}</small></span>
+      <span class="gm-dots" aria-label="${m.nSem} ${m.nSem===1?'dia':'dias'} de treino nesta semana">${m.dots.map(x=>`<i class="${x.feito?'on':''}${x.hoje?' hj':''}${x.fut?' fut':''}"></i>`).join('')}</span>
+      <span class="gm-c" aria-hidden="true">${m.nSem}</span></div>`).join('');
+  }
+  return `<div class="section"><div class="card-h"><h2 class="h2">${esc(S.grupo.nome)}</h2><button class="link" data-a="grupo">${ICON.users} Convidar</button></div>
+    <section class="card gcard">${corpo}<p class="note gfoot">Ranking pelos dias de treino da semana. Semana ativa = 3 ou mais dias.</p></section></div>`;
+}
+const AVISO_GRUPO = `<p class="note">No grupo, os outros veem só seu nome, foto, @ e os dias em que você treinou. Cargas, peso, medidas e fotos de evolução continuam só seus.</p>`;
+function grupoSheet(){
+  if(S.grupo){
+    openSheet(`<h2>${esc(S.grupo.nome)}</h2><p>Para alguém entrar, a pessoa cria a conta dela no app e usa este código em <b>Perfil › Grupo da família</b>:</p>
+      <div class="gcode" aria-label="Código do grupo">${esc(S.grupo.codigo)}</div>
+      <div class="btns"><button class="btn primary" data-a="g-convite">${ICON.share} Enviar convite</button></div>
+      ${AVISO_GRUPO}
+      <div class="btns" style="margin-top:12px"><button class="btn danger" data-a="g-sair">Sair do grupo</button><button class="btn ghost" data-a="close">Fechar</button></div>`);
+    return;
+  }
+  openSheet(`<h2>Grupo da família</h2><p>Vejam juntos quem treinou na semana, a sequência de cada um e quem treinou mais.</p>
+    ${AVISO_GRUPO}
+    <h3 class="h3">Criar um grupo</h3>
+    <label class="lbl" for="g-nome">Nome do grupo</label><input class="inp" id="g-nome" value="Família" maxlength="40">
+    <button class="btn primary" data-a="g-criar" style="margin-top:10px">Criar grupo</button>
+    <h3 class="h3">Recebeu um código?</h3>
+    <label class="lbl" for="g-cod">Código do convite</label><input class="inp code" id="g-cod" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="Ex.: 7F3A9C">
+    <button class="btn" data-a="g-entrar" style="margin-top:10px">Entrar no grupo</button>
+    <div class="btns" style="margin-top:14px"><button class="btn ghost" data-a="close">Fechar</button></div>`);
+}
+const kGrupo = ()=>'mt.grupo.'+UID;
+async function carregarGrupo(){
+  try{
+    S.grupo = await D.meuGrupo(UID);
+    S.grupoM = S.grupo ? await D.resumoGrupo(S.grupo.id) : null;
+    S.grupoErr = false; LS.set(kGrupo(), {g:S.grupo, m:S.grupoM});
+  }catch(e){
+    const c = LS.get(kGrupo(), null);
+    if(c){ S.grupo = c.g; S.grupoM = c.m; } S.grupoErr = true;
+  }
+  if(S.view==='hoje') render();
+}
+function erroGrupo(e){ return e && e.code==='codigo_invalido' ? 'Código não encontrado. Confira as letras e os números.' : e && e.code==='grupo_cheio' ? 'Esse grupo já está cheio.' : 'Não consegui agora. Confira a internet e tente de novo.'; }
+async function convidarGrupo(){
+  const txt = `Bora treinar junto no Meus Treinos! Abra ${location.origin}, crie sua conta e, no perfil, toque em "Grupo da família" e use o código ${S.grupo.codigo}.`;
+  try{ if(navigator.share){ await navigator.share({ text: txt }); return; } }catch(e){ if(e && e.name==='AbortError') return; }
+  try{ await navigator.clipboard.writeText(txt); toast('Convite copiado. É só colar no WhatsApp.'); }catch(e){ toast('Código do grupo: '+S.grupo.codigo); }
+}
+
+/* ----- Lembretes (calendário do celular, sem servidor) ----- */
+function lembretesSheet(){
+  const cfg = LS.get('mt.lembrete', {h:'18:00', antes:15});
+  const dias = SEMANA.filter(d=>FICHA.W[FICHA.sched[d]]);
+  openSheet(`<h2>Lembretes de treino</h2><p>O app cria um evento que se repete toda semana em cada dia de treino. O calendário do celular avisa sozinho, mesmo com o app fechado.</p>
+    <p class="note" style="margin-top:0">Dias: <b>${dias.map(d=>DIAS[d]).join(', ') || 'nenhum dia de treino na ficha'}</b></p>
+    <div class="frow2 lem"><label class="lbl-in"><span>Horário do treino</span><input class="inp" id="lem-h" type="time" value="${esc(cfg.h)}"></label>
+    <label class="lbl-in"><span>Avisar</span><select class="inp" id="lem-a">${[[0,'Na hora'],[15,'15 min antes'],[30,'30 min antes'],[60,'1 h antes']].map(([v,l])=>`<option value="${v}"${+cfg.antes===v?' selected':''}>${l}</option>`).join('')}</select></label></div>
+    <div class="btns" style="margin-top:14px"><button class="btn primary" data-a="lem-go"${dias.length?'':' disabled'}>${ICON.bell} Adicionar ao calendário</button><button class="btn ghost" data-a="close">Fechar</button></div>
+    <p class="note">No iPhone, toque em <b>Adicionar Tudo</b>. No Android, abra o arquivo baixado com o Google Agenda. Se mudar os dias da ficha, apague os eventos antigos e gere de novo.</p>`);
+}
+function icsTxt(t){ return String(t).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n'); }
+function icsDobrar(l){
+  const enc = new TextEncoder(), out = []; let atual = '', lim = 75;
+  for(const ch of Array.from(l)){
+    if(enc.encode(atual+ch).length > lim){ out.push(atual); atual = ' '; lim = 75; }
+    atual += ch;
+  }
+  out.push(atual); return out.join('\r\n');
+}
+function gerarIcs(h, antes){
+  const [hh, mm] = h.split(':').map(Number);
+  const BY = ['SU','MO','TU','WE','TH','FR','SA'];
+  const stamp = new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+Z$/,'Z');
+  const L = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Meus Treinos//PT-BR','CALSCALE:GREGORIAN','METHOD:PUBLISH','X-WR-CALNAME:Meus Treinos'];
+  SEMANA.forEach(wd=>{
+    const letra = FICHA.sched[wd], W = FICHA.W[letra]; if(!W) return;
+    const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() + ((wd - d.getDay() + 7) % 7));
+    const ini = d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'T'+pad(hh||0)+pad(mm||0)+'00';
+    L.push('BEGIN:VEVENT', 'UID:meustreinos-'+UID.slice(0,8)+'-'+wd+'@meustreinos.app', 'DTSTAMP:'+stamp, 'DTSTART:'+ini, 'DURATION:PT1H',
+      'RRULE:FREQ=WEEKLY;BYDAY='+BY[wd], 'SUMMARY:'+icsTxt('Hora do treino · Meus Treinos'),
+      'DESCRIPTION:'+icsTxt('Pela agenda: Treino '+letra+' ('+W.name+'). Se faltou um dia, o app mostra o próximo da sequência. '+location.origin),
+      'URL:'+location.origin, 'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:'+icsTxt('Hora do treino'), 'TRIGGER:'+(antes ? '-PT'+antes+'M' : 'PT0M'), 'END:VALARM', 'END:VEVENT');
+  });
+  L.push('END:VCALENDAR');
+  return L.map(icsDobrar).join('\r\n')+'\r\n';
+}
+function baixarLembretes(){
+  const h = ($('#lem-h') && $('#lem-h').value) || '18:00', antes = +($('#lem-a') && $('#lem-a').value) || 0;
+  LS.set('mt.lembrete', {h, antes});
+  const blob = new Blob([gerarIcs(h, antes)], {type:'text/calendar;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  if(ios){ window.location.href = url; }
+  else { const a = document.createElement('a'); a.href = url; a.download = 'lembretes-treino.ics'; document.body.appendChild(a); a.click(); a.remove(); toast('Arquivo baixado. Abra para adicionar os lembretes ao calendário.'); }
+  setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} }, 120000);
 }
 
 /* ----- Treinos ----- */
@@ -510,7 +654,7 @@ function vTreino(L){
     const sug = suggest(e, 0, L, FICHA.id);
     return `<article class="ex"><div class="ex-h"><span class="ex-num">${pad(i+1)}</span><div>
       <h3>${esc(e.n)}</h3><div class="chips"><span class="chip">${e.s} × ${range(e.r)}</span><span class="chip">Descanso ${restTxt(e.rest)}</span>${e.bi?'<span class="chip bi">Bi-set</span>':''}</div></div></div>
-      ${e.tip?`<p class="tip"><b>Dica:</b> ${esc(e.tip)}</p>`:''}
+      ${e.tip?`<p class="tip"><b>Dica:</b> ${esc(e.tip)}</p>`:''}${videoLink(e)}
       ${sug ? `<p class="last">Última vez (${fmtDate(sug.le.s.start)}): ${lastSummary(sug.le.e, e)}</p>${sugBlock(sug, e)}` : ''}
       <div style="height:6px"></div></article>`;
   }).join('');
@@ -549,8 +693,9 @@ function exCard(e, i){
     <div class="ex-h"><span class="ex-num">${pad(i+1)}</span><div>
       <h3>${esc(e.n)}</h3>
       <div class="chips"><span class="chip">${e.s} × ${range(e.r)}</span><span class="chip">${restTxt(e.rest)}</span>${e.bi?'<span class="chip bi">Bi-set</span>':''}<span class="chip ok" id="ex-ok-${i}"${complete?'':' hidden'}>Concluído</span></div>
-    </div></div>
-    ${e.tip?`<p class="tip"><b>Dica:</b> ${esc(e.tip)}</p>`:''}
+    </div><button class="swapbtn" data-a="swap" data-ei="${i}" aria-label="Trocar ${esc(e.n)} por outro exercício">${ICON.swap}<span>Trocar</span></button></div>
+    ${e.orig?`<p class="swapped">Substituído hoje (era <b>${esc(e.orig.n)}</b>) <button class="link" data-a="swap-undo" data-ei="${i}">Voltar ao original</button></p>`:''}
+    ${e.tip?`<p class="tip"><b>Dica:</b> ${esc(e.tip)}</p>`:''}${videoLink(e)}
     ${sug ? `<p class="last">Última vez (${fmtDate(sug.le.s.start)}): ${lastSummary(sug.le.e, e)}</p>${sugBlock(sug, e)}` : ''}
     <div class="sets" id="sets-${i}">${rows}</div>
     <button class="addset" data-a="addset" data-ei="${i}">+ Série extra</button>
@@ -603,11 +748,31 @@ function vHistorico(){
 
 /* ----- Evolução ----- */
 function vEvolucao(){
-  const tabs = [['cargas','Cargas'],['corpo','Corpo'],['fotos','Fotos']].map(([t,l])=>
+  const tabs = [['cargas','Cargas'],['corpo','Corpo'],['fotos','Fotos'],['conquistas','Conquistas']].map(([t,l])=>
     `<button role="tab" aria-selected="${S.evoTab===t}" data-a="evo" data-t="${t}">${l}</button>`).join('');
-  const body = S.evoTab==='corpo' ? evoCorpo() : S.evoTab==='fotos' ? evoFotos() : evoCargas();
+  const body = S.evoTab==='corpo' ? evoCorpo() : S.evoTab==='fotos' ? evoFotos() : S.evoTab==='conquistas' ? evoConquistas() : evoCargas();
   return `<header class="top"><h1 class="h1">Evolução</h1><span class="top-r">${statusPill()}${avatarBtn()}</span></header>
-    <div class="seg" role="tablist" aria-label="Seções da evolução">${tabs}</div>${body}`;
+    <div class="seg four" role="tablist" aria-label="Seções da evolução">${tabs}</div>${body}`;
+}
+function evoConquistas(){
+  const C = minhasConquistas(), nv = nivel(S.sessions.length), sem = semanasAtivas(S.sessions.map(s=>chaveDia(s.start)));
+  const feitas = C.filter(c=>c.at).sort((a,b)=>b.at-a.at), falta = C.filter(c=>!c.at).sort((a,b)=>(b.prog[0]/b.prog[1])-(a.prog[0]/a.prog[1]));
+  const prog = c=> c.tipo==='vol' ? fmtN(c.prog[0]/1000,1)+' de '+fmtN(c.prog[1]/1000,0)+' t' : c.prog[0]+' de '+c.prog[1];
+  const badge = c=>`<div class="badge${c.at?' on':''}"><span class="b-ico" aria-hidden="true">${c.ico}</span><b>${esc(c.nome)}</b>
+    <small>${c.at ? 'Conquistado em '+shortDay(chaveDia(c.at)) : esc(c.desc)}</small>
+    ${!c.at && c.prog[1]>1 ? `<span class="bar sm" aria-hidden="true"><i style="width:${Math.round(c.prog[0]/c.prog[1]*100)}%"></i></span><small class="pg">${prog(c)}</small>` : ''}</div>`;
+  const degraus = NIVEIS.map(([n,nome],i)=>`<span class="step${i<=nv.i?' on':''}${i===nv.i?' cur':''}"><b>${esc(nome)}</b><small>${n}</small></span>`).join('');
+  return `<section class="card lvlcard">
+      <div class="lvl-big"><span class="lv-n" aria-hidden="true">${nv.i+1}</span><div><small>Nível</small><b>${esc(nv.nome)}</b></div>
+        <span class="lvl-fire${sem?'':' off'}"><span aria-hidden="true">🔥</span><b>${sem}</b><small>${sem===1?'semana ativa':'semanas ativas'}</small></span></div>
+      <span class="bar"><i style="width:${Math.round(nv.pct*100)}%"></i></span>
+      <p class="note">${nv.prox ? `${nv.n} ${nv.n===1?'treino':'treinos'} · faltam <b>${nv.prox.n-nv.n}</b> para o nível <b>${esc(nv.prox.nome)}</b>` : `${nv.n} treinos · nível máximo!`}</p>
+      <div class="steps" aria-label="Níveis por número de treinos">${degraus}</div>
+      <p class="note">Semana ativa = 3 ou mais dias de treino. A sequência continua enquanto nenhuma semana fechar abaixo disso.</p></section>
+    <h2 class="h2" style="margin:18px 2px 10px">Conquistadas · ${feitas.length} de ${C.length}</h2>
+    ${feitas.length ? `<div class="badges">${feitas.map(badge).join('')}</div>` : '<div class="empty"><b>Nenhuma ainda</b>Finalize seu primeiro treino para ganhar a primeira.</div>'}
+    <h2 class="h2" style="margin:18px 2px 10px">Próximas</h2>
+    <div class="badges">${falta.map(badge).join('')}</div>`;
 }
 function evoCargas(){
   const NAMES = nomeDeChave();
@@ -897,13 +1062,48 @@ function addSet(i){
   if(card){ const tmp = document.createElement('div'); tmp.innerHTML = exCard(e,i); card.replaceWith(tmp.firstElementChild); }
   updateProgress();
 }
+/* Trocar exercício só neste treino */
+function refreshCard(i){ const card = $('#ex-'+i); if(card){ const tmp = document.createElement('div'); tmp.innerHTML = exCard(S.draft.w.ex[i], i); card.replaceWith(tmp.firstElementChild); } }
+function swapSheet(i){
+  const d = S.draft, e = d.w.ex[i], base = e.orig || e;
+  const N = nomeDeChave();
+  const nomes = [...new Set(Object.values(N))].filter(n=>n && slug(n)!==e.key).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const feitas = d.ex[i].sets.filter(st=>st.done).length;
+  openSheet(`<h2>Trocar exercício</h2><p>Aparelho ocupado ou com problema? A troca vale só para este treino. A ficha continua igual.</p>
+    <p class="note" style="margin-top:0">Na ficha: <b>${esc(base.n)}</b></p>
+    <label class="lbl" for="swap-n">Fazer no lugar</label>
+    <input class="inp" id="swap-n" list="swap-list" autocomplete="off" placeholder="Ex.: Supino com halteres">
+    <datalist id="swap-list">${nomes.map(n=>`<option value="${esc(n)}"></option>`).join('')}</datalist>
+    <p class="note">Mantém ${base.s} séries de ${range(base.r)} reps e ${restTxt(base.rest)} de descanso. O app sugere a carga se você já fez esse exercício antes.${feitas?` <b>As ${feitas} séries já marcadas aqui serão apagadas.</b>`:''}</p>
+    <div class="btns"><button class="btn primary" data-a="swap-go" data-ei="${i}">${ICON.swap} Trocar</button>${e.orig?`<button class="btn" data-a="swap-undo" data-ei="${i}">Voltar para ${esc(base.n)}</button>`:''}<button class="btn ghost" data-a="close">Cancelar</button></div>`);
+  const inp = $('#swap-n'); if(inp) inp.focus();
+}
+function swapEx(i, nome){
+  const d = S.draft, atual = d.w.ex[i], base = atual.orig || atual;
+  nome = String(nome||'').trim().replace(/\s+/g,' ');
+  if(!nome){ toast('Digite o exercício que você vai fazer.', true); return; }
+  const k = slug(nome);
+  if(k===base.key){ undoSwap(i); return; }
+  const o = copia(base); delete o.orig;
+  d.w.ex[i] = { n:nome, parts:[nome], bi:false, keys:[k], key:k, incs:[chutarAumento(nome)], s:base.s, r:base.r.slice(), rest:base.rest, tip:'', video:'', orig:o };
+  d.ex[i].sets = Array.from({length:base.s}, ()=>({done:false, p:[{kg:'',r:''}]}));
+  touchDraft(); closeSheet(true); refreshCard(i); updateProgress();
+  toast('Trocado só neste treino.');
+}
+function undoSwap(i){
+  const d = S.draft, o = d.w.ex[i].orig; if(!o) return;
+  d.w.ex[i] = o;
+  d.ex[i].sets = Array.from({length:o.s}, ()=>({done:false, p:o.parts.map(()=>({kg:'',r:''}))}));
+  touchDraft(); closeSheet(true); refreshCard(i); updateProgress();
+  toast('Voltou para '+o.n+'.');
+}
 function buildSession(){
   const d = S.draft, now = Date.now();
   const end = d.lastSetAt && (now - d.lastSetAt > 15*60*1000) ? d.lastSetAt + 60*1000 : now;
   const ex = [];
   d.w.ex.forEach((e,i)=>{
     const sets = d.ex[i].sets.filter(s=>s.done).map(s=>({p:s.p.map(p=>({kg:num(p.kg), r:num(p.r)}))}));
-    if(sets.length) ex.push({key:e.key, keys:e.keys, n:e.n, parts:e.parts, sets});
+    if(sets.length) ex.push(Object.assign({key:e.key, keys:e.keys, n:e.n, parts:e.parts, sets}, e.orig ? {era:e.orig.n} : {}));
   });
   const c = countDone(d);
   return { id:d.id || (d.id = uuid()), planId:d.planId, letter:d.letter, wname:d.w.name, start:d.start, end, dur:Math.round((end-d.start)/1000),
@@ -934,24 +1134,29 @@ function finishPrompt(){
 }
 async function saveSession(){
   const s = buildSession(); const prs = findPRs(s);
+  const antes = new Set(minhasConquistas().filter(c=>c.at).map(c=>c.id));
   S.sessions = [s].concat(S.sessions.filter(x=>x.id!==s.id)).sort((a,b)=>b.start-a.start);
+  const novas = minhasConquistas().filter(c=>c.at && !antes.has(c.id));
   S.pending = S.pending.filter(p=>p.id!==s.id).concat([s]); LS.set(kPending(), S.pending);
   S.draft = null; LS.set(kDraft(), null); D.apagarRascunho(UID);
   stopRest(); closeSheet(true);
   const L = s.letter, ord = FICHA ? FICHA.order : [L];
   const nx = ord[(ord.indexOf(L)+1)%ord.length];
   go('hoje');
-  abrirCompartilhar('semana', s, 'Treino '+L+' salvo! Próximo: Treino '+nx+'.'+(prs.length?' '+prs.length+(prs.length>1?' recordes':' recorde')+' hoje.':''));
+  const nv0 = nivel(S.sessions.length-1), nv1 = nivel(S.sessions.length);
+  const extra = (nv1.i>nv0.i ? ' Subiu para o nível '+nv1.nome+'!' : '') + (novas.length ? ' Nova conquista: '+novas.map(c=>c.ico+' '+c.nome).join(', ')+'.' : '');
+  abrirCompartilhar('semana', s, 'Treino '+L+' salvo! Próximo: Treino '+nx+'.'+(prs.length?' '+prs.length+(prs.length>1?' recordes':' recorde')+' hoje.':'')+extra,
+    novas.length ? novas[novas.length-1].nome : (nv1.i>nv0.i ? 'Nível '+nv1.nome : null));
   await enviarPendentes();
 }
 async function enviarPendentes(){
-  if(!S.pending.length) return;
+  if(!S.pending.length){ if(!S.offline && S.sync!=='saving'){ S.sync = 'ok'; renderStatus(); } return; }
   S.sync = 'saving'; renderStatus();
   for(const s of S.pending.slice()){
     try{ await D.salvarTreino(UID, s); S.pending = S.pending.filter(p=>p.id!==s.id); LS.set(kPending(), S.pending); }
     catch(e){ S.sync = 'offline'; renderStatus(); return; }
   }
-  S.sync = 'ok'; renderStatus();
+  S.sync = 'ok'; renderStatus(); guardarCache();
   if(S.view==='historico') render();
 }
 function discardPrompt(){
@@ -1194,7 +1399,8 @@ function perfilSheet(){
     <p class="note">A foto e o @ aparecem nas imagens que você compartilha.</p>
     <button class="btn" data-a="p-save" style="margin-top:10px">Salvar perfil</button>
     <div class="btns" style="margin-top:16px">
-      ${FICHA?`<button class="btn" data-a="f-edit">${ICON.edit} Editar ficha atual</button><button class="btn" data-a="fichas">Trocar de ficha</button>`:''}
+      <button class="btn" data-a="grupo">${ICON.users} Grupo da família${S.grupo?' · '+esc(S.grupo.nome):''}</button>
+      ${FICHA?`<button class="btn" data-a="lembretes">${ICON.bell} Lembretes no calendário</button><button class="btn" data-a="f-edit">${ICON.edit} Editar ficha atual</button><button class="btn" data-a="fichas">Trocar de ficha</button>`:''}
       <button class="btn danger" data-a="sair">Sair da conta</button>
       <button class="btn ghost" data-a="close">Fechar</button></div>`);
 }
@@ -1209,7 +1415,7 @@ function fichasSheet(){
 }
 
 /* ---------- Compartilhar (imagem da semana ou do mês) ---------- */
-const CARD = { tipo:'semana', ref:null, titulo:'', blob:null, url:null };
+const CARD = { tipo:'semana', ref:null, titulo:'', conquista:null, blob:null, url:null };
 function dadosSemana(ref){
   const base = ref ? ref.start : Date.now();
   const wk = startOfWeek(base), fim = wk + 7*864e5;
@@ -1225,8 +1431,8 @@ function dadosMes(ref){
   const feitos = new Set(doMes.map(s=>new Date(s.start).getDate()));
   return { ano, mes, feitos, nDias: feitos.size, tempo: doMes.reduce((n,s)=>n+(s.dur||0),0), treinos: doMes.length, data: Date.now(), nome: NOME || EMAIL.split('@')[0], insta: INSTA };
 }
-async function abrirCompartilhar(tipo, ref, titulo){
-  CARD.tipo = tipo; CARD.ref = ref || null; CARD.titulo = titulo || '';
+async function abrirCompartilhar(tipo, ref, titulo, conquista){
+  CARD.tipo = tipo; CARD.ref = ref || null; CARD.titulo = titulo || ''; CARD.conquista = conquista || null;
   if(CARD.url){ try{ URL.revokeObjectURL(CARD.url); }catch(e){} CARD.url = null; }
   CARD.blob = null;
   const tabs = `<div class="seg two" role="tablist"><button role="tab" aria-selected="${tipo==='semana'}" data-a="share-tab" data-t="semana">Semana</button><button role="tab" aria-selected="${tipo==='mes'}" data-a="share-tab" data-t="mes">Mês</button></div>`;
@@ -1237,7 +1443,7 @@ async function abrirCompartilhar(tipo, ref, titulo){
     <button class="btn ghost" data-a="close">Fechar</button></div>`);
   try{
     const foto = await fotoParaCartao();
-    const canvas = tipo==='mes' ? await desenharMes(Object.assign(dadosMes(ref), {foto})) : await desenharSemana(Object.assign(dadosSemana(ref), {foto}));
+    const canvas = tipo==='mes' ? await desenharMes(Object.assign(dadosMes(ref), {foto})) : await desenharSemana(Object.assign(dadosSemana(ref), {foto, conquista: ref ? CARD.conquista : null}));
     const blob = await new Promise(r=>canvas.toBlob(r, 'image/png'));
     if(CARD.tipo!==tipo || CARD.ref!==(ref||null)) return;
     CARD.blob = blob; CARD.url = URL.createObjectURL(blob);
@@ -1294,6 +1500,23 @@ document.addEventListener('click', async e=>{
     case 'force-start': S.draft=null; LS.set(kDraft(), null); stopRest(); closeSheet(true); startWorkout(t.dataset.l); break;
     case 'check': toggleSet(+t.dataset.ei, +t.dataset.si); break;
     case 'addset': addSet(+t.dataset.ei); break;
+    case 'swap': if(S.draft) swapSheet(+t.dataset.ei); break;
+    case 'swap-go': { const v = $('#swap-n'); if(S.draft) swapEx(+t.dataset.ei, v ? v.value : ''); break; }
+    case 'swap-undo': if(S.draft) undoSwap(+t.dataset.ei); break;
+    case 'grupo': closeSheet(true); grupoSheet(); break;
+    case 'g-convite': convidarGrupo(); break;
+    case 'g-criar': { const n = ($('#g-nome').value||'').trim() || 'Família'; t.disabled = true;
+      try{ S.grupo = await D.criarGrupo(n); S.grupoM = null; await carregarGrupo(); grupoSheet(); toast('Grupo criado! Mande o código para a família.'); }
+      catch(err){ t.disabled = false; toast(erroGrupo(err), true); } break; }
+    case 'g-entrar': { const c = ($('#g-cod').value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+      if(c.length!==6){ toast('O código tem 6 letras e números.', true); break; } t.disabled = true;
+      try{ await D.entrarGrupo(c); await carregarGrupo(); closeSheet(true); go('hoje'); toast('Você entrou no grupo '+(S.grupo?S.grupo.nome:'')+'.'); }
+      catch(err){ t.disabled = false; toast(erroGrupo(err), true); } break; }
+    case 'g-sair': if(S.confirmDel!=='g-sair'){ S.confirmDel='g-sair'; t.textContent='Toque de novo para sair'; break; }
+      try{ await D.sairGrupo(S.grupo.id); S.grupo = null; S.grupoM = null; LS.set(kGrupo(), null); closeSheet(true); render(); toast('Você saiu do grupo.'); }
+      catch(err){ toast(erroGrupo(err), true); } break;
+    case 'lembretes': closeSheet(true); if(FICHA) lembretesSheet(); break;
+    case 'lem-go': baixarLembretes(); break;
     case 'rest-add': if(S.rest){ unlockAudio(); S.rest.end = Math.max(Date.now()+1000, (S.rest.over?Date.now():S.rest.end) + (+t.dataset.s)*1000); if(S.rest.over){ S.rest.over=false; $('#rest').classList.remove('over'); } S.rest.total = Math.max(S.rest.total, (S.rest.end-Date.now())/1000); scheduleBeeps((S.rest.end-Date.now())/1000); tickRest(); } break;
     case 'rest-skip': stopRest(); break;
     case 'sound': S.sound=!S.sound; LS.set('mt.sound',S.sound); if(S.sound) unlockAudio(); else cancelBeeps(); if(S.sound && S.rest && !S.rest.over) scheduleBeeps((S.rest.end-Date.now())/1000);
@@ -1333,8 +1556,10 @@ document.addEventListener('click', async e=>{
     case 'recarregar': S.loadErr=''; render(); carregar(); break;
     // conta e fichas
     case 'perfil': perfilSheet(); break;
-    case 'share': { const ss = t.dataset.id ? S.sessions.find(x=>x.id===t.dataset.id) : null; abrirCompartilhar(t.dataset.t, ss); break; }
-    case 'share-tab': abrirCompartilhar(t.dataset.t, CARD.ref, CARD.titulo); break;
+    case 'share': { const ss = t.dataset.id ? S.sessions.find(x=>x.id===t.dataset.id) : null;
+      const cq = ss ? minhasConquistas().filter(c=>c.at===ss.start).pop() : null;
+      abrirCompartilhar(t.dataset.t, ss, null, cq ? cq.nome : null); break; }
+    case 'share-tab': abrirCompartilhar(t.dataset.t, CARD.ref, CARD.titulo, CARD.conquista); break;
     case 'share-go': enviarCard(); break;
     case 'p-save': {
       const n = $('#p-nome').value.trim(); const ig = $('#p-insta').value.trim().replace(/^@+/, '').replace(/\s+/g,'');
@@ -1407,14 +1632,27 @@ document.addEventListener('submit', e=>{
   else if(e.target.id==='f-nova') salvarNovaSenha();
 });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('#sheet').hidden) closeSheet(); });
-document.addEventListener('visibilitychange', ()=>{ if(!document.hidden){ tickRest(); tickClock(); if(S.draft && S.view==='sessao') pedirTelaAcesa(); } });
-window.addEventListener('online', ()=>{ if(UID) enviarPendentes(); });
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ guardarCache(); return; } if(!document.hidden){ tickRest(); tickClock(); if(S.draft && S.view==='sessao') pedirTelaAcesa(); } });
+window.addEventListener('online', ()=>{ if(!UID) return; if(S.offline) carregar(true); else { enviarPendentes(); carregarGrupo(); } });
+window.addEventListener('offline', ()=>{ if(UID){ S.sync = 'offline'; renderStatus(); } });
 
 /* ---------- Início ---------- */
-async function carregar(){
-  S.view = 'carregando'; render();
+function comPrazo(p, ms){ return Promise.race([p, new Promise((_, rej)=>setTimeout(()=>rej(new Error('tempo')), ms))]); }
+async function carregar(silencioso){
+  if(!silencioso){ S.view = 'carregando'; render(); }
+  let d, doAparelho = false;
   try{
-    const d = await D.carregarTudo(UID);
+    d = await comPrazo(D.carregarTudo(UID), 15000);
+    LS.set(kDados(), d);
+  }catch(e){
+    d = LS.get(kDados(), null); doAparelho = true;
+    if(!d){
+      if(!silencioso){ S.loadErr = 'Confira a internet e tente de novo.'; S.view = 'carregando'; render(); }
+      return;
+    }
+  }
+  S.offline = doAparelho;
+  try{
     NOME = d.nome || NOME; AVATAR = d.avatar; INSTA = d.instagram; AVATAR_IMG = null;
     FICHAS = d.fichas; definirFicha();
     S.pending = LS.get(kPending(), []);
@@ -1422,17 +1660,36 @@ async function carregar(){
     S.pending = S.pending.filter(p=>!ids.has(p.id)); LS.set(kPending(), S.pending);
     S.sessions = d.treinos.concat(S.pending).sort((a,b)=>b.start-a.start);
     S.body = d.peso; S.measures = d.avaliacoes; S.photos = d.fotos;
-    const local = LS.get(kDraft(), null);
+    const local = S.draft || LS.get(kDraft(), null);
     const nuvem = d.rascunho;
     S.draft = (local && (!nuvem || (local.at||0) >= (nuvem.at||0))) ? local : nuvem;
     if(S.draft && (!S.draft.w || !S.draft.ex)) S.draft = null;
-    S.view = !FICHA ? 'onboarding' : (S.draft && Date.now()-S.draft.start < 4*3600*1000 ? 'sessao' : 'hoje');
-    render();
-    enviarPendentes();
+    if(!silencioso || S.view==='carregando') S.view = !FICHA ? 'onboarding' : (S.draft && Date.now()-S.draft.start < 4*3600*1000 ? 'sessao' : 'hoje');
+    if(doAparelho){ S.sync = 'offline'; }
+    if(!silencioso || S.view!=='sessao') render(); else renderStatus();
+    if(doAparelho){ if(!silencioso) toast('Sem internet: usando os dados guardados no aparelho. O treino é salvo quando a conexão voltar.'); }
+    else { S.sync = 'ok'; enviarPendentes(); }
+    carregarGrupo();
   }catch(e){
-    S.loadErr = 'Confira a internet e tente de novo.';
+    S.loadErr = 'Não consegui abrir seus dados. Tente de novo.';
     S.view = 'carregando'; render();
   }
+}
+// Mantém a cópia do aparelho em dia (para abrir sem internet)
+function guardarCache(){
+  if(!UID) return;
+  const c = LS.get(kDados(), null); if(!c) return;
+  const pend = new Set(S.pending.map(p=>p.id));
+  Object.assign(c, { treinos:S.sessions.filter(x=>!pend.has(x.id)), peso:S.body, avaliacoes:S.measures, fotos:S.photos, fichas:FICHAS, nome:NOME, avatar:AVATAR, instagram:INSTA });
+  LS.set(kDados(), c);
+}
+// Usuário guardado no aparelho (para abrir sem internet)
+function usuarioGuardado(){
+  try{
+    const ref = new URL(import.meta.env.VITE_SUPABASE_URL).hostname.split('.')[0];
+    const v = JSON.parse(localStorage.getItem('sb-'+ref+'-auth-token') || 'null');
+    return v && v.user && v.user.id ? v.user : null;
+  }catch(e){ return null; }
 }
 function entrar(user){
   if(UID === user.id) return;
@@ -1442,7 +1699,7 @@ function entrar(user){
 }
 function sairLocal(){
   UID = null; EMAIL=''; NOME=''; AVATAR=''; INSTA=''; AVATAR_IMG=null; FICHAS=[]; FICHA=null;
-  Object.assign(S, {sessions:[], body:[], measures:[], photos:[], draft:null, pending:[], edit:null, exSel:null, mSel:null});
+  Object.assign(S, {sessions:[], body:[], measures:[], photos:[], draft:null, pending:[], edit:null, exSel:null, mSel:null, grupo:null, grupoM:null, grupoErr:false, offline:false, sync:'ok'});
   stopRest(); closeSheet(true);
   S.auth='entrar'; S.authErr=''; S.authMsg='';
   S.view = 'auth'; render();
@@ -1455,9 +1712,30 @@ function iniciar(){
       if(evento==='PASSWORD_RECOVERY'){ S.authErr=''; S.view='nova-senha'; render(); return; }
       if(evento==='SIGNED_OUT'){ sairLocal(); return; }
       if(sessao && sessao.user){ if(S.view!=='nova-senha') entrar(sessao.user); }
-      else if(evento==='INITIAL_SESSION'){ S.view='auth'; render(); }
+      else if(evento==='INITIAL_SESSION'){
+        const u = !navigator.onLine ? usuarioGuardado() : null;
+        if(u && LS.get('mt.dados.'+u.id, null)) entrar(u);
+        else { S.view='auth'; render(); }
+      }
     }, 0);
   });
 }
 render();
 iniciar();
+
+/* ---------- Funcionar offline (service worker) ---------- */
+if(import.meta.env.PROD && 'serviceWorker' in navigator){
+  window.addEventListener('load', async ()=>{
+    try{
+      await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      // guarda os arquivos desta versão do app e limpa os de versões antigas
+      const atuais = performance.getEntriesByType('resource').map(r=>r.name)
+        .filter(u=>{ try{ const x = new URL(u); return x.origin===location.origin && (/^\/assets\//.test(x.pathname) || /\.(png|webmanifest)$/.test(x.pathname)); }catch(e){ return false; } });
+      const cache = await caches.open('mt-app');
+      await Promise.all(atuais.map(u=>cache.match(u).then(m=>m || cache.add(u)).catch(()=>{})));
+      const set = new Set(atuais);
+      (await cache.keys()).forEach(req=>{ const p = new URL(req.url).pathname; if(/^\/assets\//.test(p) && !set.has(req.url)) cache.delete(req); });
+    }catch(e){}
+  });
+}

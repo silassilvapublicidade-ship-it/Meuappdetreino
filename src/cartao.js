@@ -99,6 +99,7 @@ function espacado(x, txt, cx, y, sp, align='center'){
   const larg = [...txt].reduce((n,ch)=>n + x.measureText(ch).width + sp, -sp);
   let px = align==='center' ? cx - larg/2 : cx; x.textAlign = 'left';
   for(const ch of txt){ x.fillText(ch, px, y); px += x.measureText(ch).width + sp; }
+  return px;
 }
 function rotulo(x, txt, y, cor=COR.mint){
   x.font = `800 28px ${BODY}`; x.fillStyle = cor;
@@ -183,6 +184,28 @@ function perfil(x, d, y){
   x.textAlign = 'right'; x.font = `400 44px ${DISPLAY}`; x.fillStyle = COR.mint; x.fillText('NO FOCO', W-120, y + 14);
 }
 
+// faixa "NOVA CONQUISTA" entre os números e a semana
+function estrela(x, cx, cy, r){
+  x.beginPath();
+  for(let i=0;i<10;i++){ const a = -Math.PI/2 + i*Math.PI/5, rr2 = i%2 ? r*0.45 : r; x.lineTo(cx + Math.cos(a)*rr2, cy + Math.sin(a)*rr2); }
+  x.closePath(); x.fill();
+}
+function selo(x, nome, t){
+  const h = 50;
+  x.save();
+  rr(x, 80, t, W-160, h, h/2);
+  const g = x.createLinearGradient(80, t, W-80, t); g.addColorStop(0,'rgba(255,196,70,.24)'); g.addColorStop(1,'rgba(67,227,173,.14)');
+  x.fillStyle = g; x.fill(); x.lineWidth = 2; x.strokeStyle = 'rgba(255,206,92,.85)'; x.stroke();
+  x.fillStyle = '#ffd25c'; estrela(x, 122, t+h/2, 17);
+  x.textAlign = 'left'; x.font = `800 24px ${BODY}`; x.fillStyle = '#ffd25c';
+  const px = espacado(x, 'NOVA CONQUISTA', 156, t+h/2+9, 3, 'left') + 22;
+  let txt = String(nome).toUpperCase();
+  x.font = `800 26px ${BODY}`; x.fillStyle = COR.ink;
+  while(x.measureText(txt).width > W-120-px-20 && txt.length>4) txt = txt.slice(0,-2)+'…';
+  x.fillText(txt, px, t+h/2+10);
+  x.restore();
+}
+
 /* ---------- semana ---------- */
 export async function desenharSemana(d){
   await fontes();
@@ -198,7 +221,8 @@ export async function desenharSemana(d){
   stats(x, s
     ? [[tempoTxt(s.dur), 'TEMPO'], [s.done+'/'+s.total, 'SÉRIES'], [Math.floor(s.vol||0).toLocaleString('pt-BR')+' kg', 'VOLUME']]
     : [[String(d.treinosSemana), d.treinosSemana===1?'TREINO':'TREINOS'], [tempoTxt(d.tempoSemana), 'TEMPO'], [Math.floor(d.volSemana||0).toLocaleString('pt-BR')+' kg', 'VOLUME']], 790);
-  rotulo(x, 'SEMANA', 1090, COR.cyan);
+  if(d.conquista) selo(x, d.conquista, 1008);
+  rotulo(x, 'SEMANA', d.conquista ? 1104 : 1090, COR.cyan);
   semana(x, d.dias, 1180);
   destaqueNumero(x, d.nDias, d.nDias===1?'DIA DE TREINO':'DIAS DE TREINO', 'NESTA SEMANA', 1500);
   perfil(x, d, 1592);

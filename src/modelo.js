@@ -95,6 +95,14 @@ export function chutarAumento(nome){
   return 2;
 }
 
+// Link de vídeo aceito: só http(s)
+export function linkOk(u){
+  u = String(u==null?'':u).trim();
+  if(!u) return '';
+  if(!/^https?:\/\//i.test(u)) u = 'https://' + u.replace(/^\/+/, '');
+  try{ const x = new URL(u); return (x.protocol==='https:'||x.protocol==='http:') && x.hostname.includes('.') && u.length<=500 ? x.href : ''; }catch(e){ return ''; }
+}
+
 // Ficha do banco/edição -> ficha pronta para uso (com chaves calculadas)
 export function prepararFicha(src){
   const order = (src.order||[]).filter(L=>src.w && src.w[L]);
@@ -106,7 +114,7 @@ export function prepararFicha(src){
       const keys = parts.map(slug);
       const incs = Array.isArray(e.inc) ? parts.map((p,i)=>Number(e.inc[i]) || 0) : parts.map(()=> e.inc==null ? chutarAumento(e.n) : Number(e.inc)||0);
       const r = Array.isArray(e.r) ? [Number(e.r[0])||1, Math.max(Number(e.r[0])||1, Number(e.r[1])||Number(e.r[0])||1)] : [10,12];
-      return { n:e.n, parts, bi:parts.length>1, keys, key:keys.join('+'), incs, s:Math.max(1, Number(e.s)||3), r, rest:Math.max(0, Number(e.rest)||60), tip:e.tip||'' };
+      return { n:e.n, parts, bi:parts.length>1, keys, key:keys.join('+'), incs, s:Math.max(1, Number(e.s)||3), r, rest:Math.max(0, Number(e.rest)||60), tip:e.tip||'', video:linkOk(e.video) };
     });
     W[L] = { name:w.name||('Treino '+L), focus:w.focus||'', rest:w.rest||'', ex, total: ex.reduce((n,e)=>n+e.s,0) };
   });
@@ -123,6 +131,7 @@ export function fichaParaSalvar(f){
     w[L] = { name:t.name, focus:t.focus||'', rest:t.rest||'', ex:t.ex.map(e=>{
       const bi = Array.isArray(e.parts) && e.parts.filter(Boolean).length>1;
       const o = { n: bi ? e.parts.filter(Boolean).join(' + ') : e.n, s:e.s, r:e.r, rest:e.rest, tip:e.tip||'' };
+      if(linkOk(e.video)) o.video = linkOk(e.video);
       if(bi){ o.parts = e.parts.filter(Boolean); o.inc = o.parts.map((p,i)=>Number(Array.isArray(e.inc)?e.inc[i]:e.inc)||0); }
       else o.inc = Number(Array.isArray(e.inc)?e.inc[0]:e.inc)||0;
       return o;

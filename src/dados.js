@@ -151,3 +151,33 @@ export async function lerDocumento(tipo, arquivos){
   }
   return data;
 }
+
+// ---------- Grupo da família (só frequência) ----------
+function erroRpc(error){
+  const m = String(error && error.message || '');
+  const e = new Error(m); e.code = /codigo_invalido/.test(m) ? 'codigo_invalido' : /grupo_cheio/.test(m) ? 'grupo_cheio' : 'falha'; return e;
+}
+export async function meuGrupo(uid){
+  const linhas = ok(await sb.from('group_members').select('group_id,joined_at,groups(id,nome,codigo)').eq('user_id', uid).order('joined_at', { ascending: true }));
+  const g = (linhas || []).map(l => l.groups).filter(Boolean)[0];
+  return g ? { id: g.id, nome: g.nome, codigo: g.codigo } : null;
+}
+export async function criarGrupo(nome){
+  const { data, error } = await sb.rpc('criar_grupo', { p_nome: nome });
+  if(error) throw erroRpc(error);
+  const g = Array.isArray(data) ? data[0] : data;
+  return { id: g.id, nome: g.nome, codigo: g.codigo };
+}
+export async function entrarGrupo(codigo){
+  const { error } = await sb.rpc('entrar_grupo', { p_codigo: codigo });
+  if(error) throw erroRpc(error);
+}
+export async function sairGrupo(id){
+  const { error } = await sb.rpc('sair_grupo', { p_grupo: id });
+  if(error) throw erroRpc(error);
+}
+export async function resumoGrupo(id){
+  const { data, error } = await sb.rpc('grupo_resumo', { p_grupo: id });
+  if(error) throw erroRpc(error);
+  return (data || []).map(m => ({ uid: m.user_id, nome: m.nome || '', avatar: m.avatar_path || '', insta: m.instagram || '', dias: (m.dias || []).map(String) }));
+}

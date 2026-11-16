@@ -213,12 +213,15 @@ export async function desenharSemana(d){
   const s = d.ref;
   equipamento(x);
   marca(x, d.data);
-  rotulo(x, s ? 'TREINO CONCLUÍDO' : 'MINHA SEMANA', 400);
+  rotulo(x, s ? (s.letter==='CARDIO' ? 'CARDIO CONCLUÍDO' : 'TREINO CONCLUÍDO') : 'MINHA SEMANA', 400);
   x.textAlign = 'left'; x.font = `400 230px ${DISPLAY}`; x.fillStyle = COR.ink;
-  x.fillText(s ? 'TREINO '+String(s.letter||'') : 'SEMANA', 72, 610);
+  const cardio = s && s.letter==='CARDIO', cd = cardio ? ((s.ex||[])[0]||{}).cardio || {} : null;
+  x.fillText(s ? (cardio ? 'CARDIO' : 'TREINO '+String(s.letter||'')) : 'SEMANA', 72, 610);
   x.font = `400 120px ${DISPLAY}`; x.fillStyle = gradTxt(x, 630, 740);
   x.fillText(s ? String(s.wname||'').toUpperCase().slice(0,22) : 'DE TREINO', 76, 732);
-  stats(x, s
+  stats(x, cardio
+    ? [[tempoTxt(s.dur), 'TEMPO'], [cd.km ? String(cd.km).replace('.',',')+' km' : '—', 'DISTÂNCIA'], [cd.kcal ? Math.round(cd.kcal)+' kcal' : '—', 'CALORIAS']]
+    : s
     ? [[tempoTxt(s.dur), 'TEMPO'], [s.done+'/'+s.total, 'SÉRIES'], [Math.floor(s.vol||0).toLocaleString('pt-BR')+' kg', 'VOLUME']]
     : [[String(d.treinosSemana), d.treinosSemana===1?'TREINO':'TREINOS'], [tempoTxt(d.tempoSemana), 'TEMPO'], [Math.floor(d.volSemana||0).toLocaleString('pt-BR')+' kg', 'VOLUME']], 790);
   if(d.conquista) selo(x, d.conquista, 1008);

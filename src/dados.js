@@ -29,13 +29,13 @@ function treinoParaLinha(uid, s){
 }
 function linhaParaFicha(r){
   const t = r.treinos || {};
-  return { id: r.id, nome: r.nome, ativa: r.ativa, order: t.order || [], w: t.w || {}, sched: r.cronograma || {}, updated: r.updated_at };
+  return { id: r.id, nome: r.nome, ativa: r.ativa, order: t.order || [], w: t.w || {}, sched: r.cronograma || {}, updated: r.updated_at, criada: r.created_at ? Date.parse(r.created_at) : null };
 }
 
 // ---------- Carga inicial ----------
 export async function carregarTudo(uid){
   const [perfil, fichas, treinos, peso, aval, fotos, rascunho, videos, editor, admin, avisos, catalogo] = await Promise.all([
-    sb.from('profiles').select('nome,avatar_path,instagram').eq('id', uid).maybeSingle().then(ok),
+    sb.from('profiles').select('nome,avatar_path,instagram,meta_peso,meta_gordura,meta_data').eq('id', uid).maybeSingle().then(ok),
     sb.from('plans').select('*').order('created_at', { ascending: true }).then(ok),
     sb.from('sessions').select('*').order('started_at', { ascending: false }).limit(1000).then(ok),
     sb.from('body_weights').select('d,kg').order('d', { ascending: true }).then(ok),
@@ -52,6 +52,7 @@ export async function carregarTudo(uid){
     nome: perfil && perfil.nome || '',
     avatar: perfil && perfil.avatar_path || '',
     instagram: perfil && perfil.instagram || '',
+    metas: { peso: perfil && perfil.meta_peso != null ? Number(perfil.meta_peso) : null, gordura: perfil && perfil.meta_gordura != null ? Number(perfil.meta_gordura) : null, data: perfil && perfil.meta_data || null },
     fichas: (fichas || []).map(linhaParaFicha),
     treinos: (treinos || []).map(linhaParaTreino),
     peso: (peso || []).map(p => ({ d: p.d, kg: Number(p.kg) })),
@@ -225,3 +226,8 @@ export async function statusLeitura(){
   return data;
 }
 export async function enviarLinkSenha(email){ const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin }); if(error) throw error; }
+
+// ---------- Reações no grupo ----------
+export async function listarReacoes(desde){ return ok(await sb.from('group_reactions').select('id,from_user,to_user,dia,emoji').gte('dia', desde)) || []; }
+export async function reagir(to, dia, emoji){ return ok(await sb.from('group_reactions').insert({ to_user: to, dia, emoji }).select('id,from_user,to_user,dia,emoji').single()); }
+export async function desreagir(id){ ok(await sb.from('group_reactions').delete().eq('id', id)); }

@@ -366,7 +366,7 @@ async function salvarNovaSenha(){
 
 /* ----- Ficha: começo, edição e troca ----- */
 function vOnboarding(){
-  const voltar = FICHA ? `<button class="back" data-a="go" data-v="treinos">${ICON.back} Voltar</button>` : `<header class="top"><span class="date">Olá, ${esc(NOME||'')}</span>${avatarBtn()}</header>`;
+  const voltar = FICHA ? `<button class="back" data-a="go" data-v="treinos">${ICON.back} Voltar</button>` : `<header class="top"><span class="date">Olá, ${esc(NOME||'')} ${arroba(INSTA)}</span>${avatarBtn()}</header>`;
   return `${voltar}
     <h1 class="h1" style="margin-top:6px">${FICHA?'Nova ficha':'Monte sua ficha'}</h1>
     <p class="note" style="margin:6px 0 16px">Escolha como começar. Dá para ajustar tudo depois.</p>
@@ -609,7 +609,7 @@ function vHoje(){
     <button class="tile" data-a="evo" data-t="corpo" style="text-align:left;color:inherit;font:inherit"><span class="k">Peso</span><span class="v">${lastBody ? fmtN(lastBody.kg)+'<small> kg</small>' : '<small>registrar</small>'}</span></button>
   </div>`;
   let date = new Date().toLocaleDateString('pt-BR',{weekday:'long', day:'numeric', month:'long'}); date = date.charAt(0).toUpperCase()+date.slice(1);
-  return `<header class="top"><span class="date">${esc(date)}</span><span class="top-r">${statusPill()}${avatarBtn()}</span></header>
+  return `<header class="top"><span class="date">${esc(date)}<small class="ola">Olá, ${esc((NOME||'').split(' ')[0])}${INSTA?' · '+arroba(INSTA):''}</small></span><span class="top-r">${statusPill()}${avatarBtn()}</span></header>
     ${avisosHoje()}
     ${cardRetro()}
     ${cardInstalar()}
@@ -634,6 +634,8 @@ function nivelStrip(){
 }
 
 /* ----- Grupo da família ----- */
+function arroba(ig){ return ig ? `<span class="ig">@${esc(ig)}</span>` : ''; }
+function miniAvatar(path, nome, cls){ return `<span class="avatar ${cls||'xs'}" aria-hidden="true">${path?`<img data-path="${esc(path)}" alt="">`:esc(iniciais(nome))}</span>`; }
 function iniciais(n){ return (n||'?').trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase(); }
 function grupoCard(){
   if(!S.grupo){
@@ -656,7 +658,7 @@ function grupoCard(){
     const topo = linhas.length>1 && linhas[0].nSem>0 && linhas[1].nSem<linhas[0].nSem ? linhas[0].nSem : -1;
     corpo = linhas.map(m=>`<div class="gm${m.eu?' eu':''}">
       <span class="avatar sm" aria-hidden="true">${m.avatar?`<img data-path="${esc(m.avatar)}" alt="">`:esc(iniciais(m.nome))}</span>
-      <span class="gm-n"><b>${esc(m.eu ? 'Você' : (m.nome||'Sem nome'))}${m.nSem===topo?' <span title="Mais dias na semana">👑</span>':''}</b>
+      <span class="gm-n"><b>${esc(m.eu ? 'Você' : (m.nome||'Sem nome'))}${m.nSem===topo?' <span title="Mais dias na semana">👑</span>':''}</b>${arroba(m.eu ? INSTA : m.insta)}
         <small>${m.nMes} ${m.nMes===1?'dia':'dias'} no mês${m.seq?' · 🔥 '+m.seq+(m.seq===1?' semana':' semanas'):''}</small></span>
       <span class="gm-dots" aria-label="${m.nSem} ${m.nSem===1?'dia':'dias'} de treino nesta semana">${m.dots.map(x=>`<i class="${x.feito?'on':''}${x.hoje?' hj':''}${x.fut?' fut':''}"></i>`).join('')}</span>
       <span class="gm-c" aria-hidden="true">${m.nSem}</span>${linhaReacoes(m)}</div>`).join('');
@@ -763,9 +765,10 @@ function linhaReacoes(m){
   const quando = m.ultimo===chaveDia(Date.now()) ? 'hoje' : shortDay(m.ultimo).slice(0,5);
   if(m.eu){
     if(!R.length) return '';
-    const nomes = {}; (S.grupoM||[]).forEach(x=>{ nomes[x.uid] = x.nome||'Alguém'; });
-    const quem = [...new Set(R.map(r=>nomes[r.from_user]||'Alguém'))].join(', ');
-    return `<div class="gm-r recebidas"><span>${EMOJIS.map(e=>{ const n = R.filter(r=>r.emoji===e).length; return n?`${e} ${n}`:''; }).filter(Boolean).join('  ')}</span><small>${esc(quem)} no seu treino de ${quando}</small></div>`;
+    const pess = {}; (S.grupoM||[]).forEach(x=>{ pess[x.uid] = x; });
+    const ids = [...new Set(R.map(r=>r.from_user))];
+    const quem = ids.map(id=>{ const x = pess[id]||{}; return x.insta ? '@'+x.insta : (x.nome||'Alguém'); }).join(', ');
+    return `<div class="gm-r recebidas"><span class="rx-av">${ids.slice(0,4).map(id=>{ const x = pess[id]||{}; return miniAvatar(x.avatar, x.nome); }).join('')}</span><span>${EMOJIS.map(e=>{ const n = R.filter(r=>r.emoji===e).length; return n?`${e} ${n}`:''; }).filter(Boolean).join('  ')}</span><small>${esc(quem)} no seu treino de ${quando}</small></div>`;
   }
   return `<div class="gm-r"><small>Treino de ${quando}:</small>${EMOJIS.map(e=>{
     const meu = R.find(r=>r.from_user===UID && r.emoji===e), n = R.filter(r=>r.emoji===e).length;
@@ -785,7 +788,7 @@ function avisarReacoesNovas(){
   const k = 'mt.rx.'+UID, vistas = new Set(LS.get(k, []));
   const novas = (S.reacoes||[]).filter(r=>r.to_user===UID && !vistas.has(r.id));
   if(novas.length){
-    const nomes = {}; (S.grupoM||[]).forEach(x=>{ nomes[x.uid] = x.nome||'Alguém'; });
+    const nomes = {}; (S.grupoM||[]).forEach(x=>{ nomes[x.uid] = (x.nome||'Alguém')+(x.insta?' (@'+x.insta+')':''); });
     const txt = novas.slice(0,3).map(r=>(nomes[r.from_user]||'Alguém')+' mandou '+r.emoji).join(' · ');
     setTimeout(()=>toast(txt+' no seu treino!'), 600);
   }
@@ -1157,7 +1160,7 @@ function admUsuarios(){
   return `<p class="note" style="margin:0 2px 12px">Você vê dados de uso e as fichas. Peso, medidas e fotos de cada pessoa continuam privados.</p>` + U.map(u=>{
     const ult = u.ultimo_treino ? agoTxt(Date.parse(u.ultimo_treino)) : 'nunca';
     return `<section class="card ucard">
-      <div class="uc-h"><span class="avatar">${esc(iniciais(u.nome||u.email))}</span><div><b>${esc(u.nome||'Sem nome')}${u.user_id===UID?' (você)':''}</b><small>${esc(u.email||'')}</small></div>
+      <div class="uc-h">${miniAvatar(u.avatar_path, u.nome||u.email, 'md')}<div><b>${esc(u.nome||'Sem nome')}${u.user_id===UID?' (você)':''}</b>${arroba(u.instagram)}<small>${esc(u.email||'')}</small></div>
         ${u.admin?'<span class="chip ok">Admin</span>':''}${!u.confirmado?'<span class="chip warn">E-mail não confirmado</span>':''}</div>
       <div class="uc-g">
         <span><small>Treinos</small><b>${fmtInt(u.treinos)}</b></span><span><small>30 dias</small><b>${fmtInt(u.treinos_30d)}</b></span>
@@ -1224,7 +1227,7 @@ function admErros(){
   const E = S.adm.erros;
   if(!E) return S.adm.errosErr ? '<div class="empty"><b>Não consegui carregar</b>Confira a internet.</div>' : carregandoAdm();
   if(!E.length) return `<div class="empty"><b>Nenhum erro registrado</b>Quando algo der errado no celular de alguém, aparece aqui com a tela, a versão e o aparelho.</div>`;
-  const nomes = {}; (S.adm.usuarios||[]).forEach(u=>{ nomes[u.user_id] = u.nome || u.email; });
+  const nomes = {}; (S.adm.usuarios||[]).forEach(u=>{ nomes[u.user_id] = (u.nome || u.email)+(u.instagram?' @'+u.instagram:''); });
   const ap = ua=>{ ua = ua||''; return /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Computador' : 'Outro'; };
   return `<div class="btns" style="margin-bottom:12px"><button class="btn sm danger" data-a="adm-erros-limpar">Limpar todos os erros</button></div>` + E.map(e=>`<details class="erro"><summary>
       <b>${esc(e.msg)}</b><small>${esc(fmtDate(Date.parse(e.created_at)))} ${hhmm(Date.parse(e.created_at))} · ${esc(nomes[e.user_id]||'alguém')} · tela ${esc(e.tela||'?')} · ${ap(e.aparelho)}</small></summary>

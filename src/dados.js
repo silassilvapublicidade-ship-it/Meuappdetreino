@@ -206,7 +206,7 @@ export async function exerciciosDaFamilia(){
 function linhaParaAviso(a){ return { id: a.id, texto: a.texto, nivel: a.nivel, ativo: a.ativo, expira: a.expira_em ? Date.parse(a.expira_em) : null, t: Date.parse(a.created_at) }; }
 async function rpc(nome, args){ const { data, error } = await sb.rpc(nome, args || {}); if(error) throw error; return data; }
 export async function adminResumo(){ const t0 = performance.now(); const r = await rpc('admin_resumo'); return { ...r, ms: Math.round(performance.now() - t0) }; }
-export async function adminUsuarios(){ return (await rpc('admin_usuarios')) || []; }
+export async function adminUsuarios(){ return (await rpc('admin_usuarios_v2')) || []; }
 export async function adminFichas(uid){ return ((await rpc('admin_fichas', { p_user: uid })) || []).map(linhaParaFicha); }
 export async function adminSalvarFicha(uid, id, nome, json){
   const r = await rpc('admin_salvar_ficha', { p_user: uid, p_id: id || null, p_nome: nome, p_treinos: json.treinos, p_cronograma: json.cronograma });

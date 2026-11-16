@@ -29,7 +29,7 @@ const FRASES = [
   [/\b(leg-45|leg-press-inclinado)\b/g, 'leg-press-45'],
   [/\b(triceps-pulley|triceps-barra-(na-)?polia|triceps-na-polia|triceps-polia-barra)\b/g, 'triceps-polia'],
   [/\b(desenvolvimento-militar)\b/g, 'desenvolvimento-barra'],
-  [/\babdominal-supra\b/g, 'abdominal'], [/\b(flexao-de-braco|flexoes|apoio-de-frente)\b/g, 'flexao-braco'],
+  [/\babdominal-supra\b/g, 'abdominal'], [/\bprancha-(isometrica|frontal|ventral|abdominal)\b/g, 'prancha'], [/\b(flexao-de-braco|flexoes|apoio-de-frente)\b/g, 'flexao-braco'],
   [/\b(esteira)\b/g, 'corrida'], [/\b(bike|bicicleta-ergometrica)\b/g, 'bicicleta']
 ];
 const PALAVRA = { halteres:'halter', haltere:'halter', barras:'barra', maquinas:'maquina', polias:'polia', cross:'polia', crossover:'polia', cabo:'polia', cabos:'polia', pulley:'polia',

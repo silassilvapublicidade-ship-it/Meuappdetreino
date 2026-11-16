@@ -105,6 +105,15 @@ body.in-session #app{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{font-size:12px;font-weight:800;padding:4px 9px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);font-variant-numeric:tabular-nums}
 .chip.bi{color:var(--cyan);border-color:rgba(60,201,255,.4)}
+button.chip{font-family:inherit;color:inherit;cursor:pointer;line-height:1.2}
+button.chip.bi{color:var(--cyan)}
+.chip.tq span{opacity:.8;font-weight:700}
+.tq-res{font-size:16px;font-weight:700;line-height:1.4;margin:4px 0 12px}
+.tq-passos{margin:0 0 12px;padding-left:22px;display:grid;gap:8px;line-height:1.45;color:var(--ink)}
+.tq-passos li::marker{color:var(--mint);font-weight:900}
+.tq-mais{margin-top:16px;color:var(--muted)}
+.tq-mais summary{cursor:pointer;font-weight:800;font-size:13px;padding:6px 0}
+.tq-mais .chips{margin-top:8px}
 .chip.ok{color:var(--mint);border-color:rgba(67,227,173,.45)}
 .tip{margin:10px 0 0 42px;font-size:13px;color:var(--muted)}
 .tip b{color:var(--mint);font-weight:700}

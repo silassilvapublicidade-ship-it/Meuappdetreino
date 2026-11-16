@@ -11,6 +11,7 @@ import {
 } from './modelo.js';
 import { calcular as calcConquistas, nivel, semanasAtivas, chaveDia, NIVEIS } from './conquistas.js';
 import { prepararCatalogo, acharNoCatalogo, GRUPOS } from './catalogo.js';
+import { tecnicasDe, tecnica, TECNICAS } from './tecnicas.js';
 import * as D from './dados.js';
 import { desenharSemana, desenharMes, desenharConquista, desenharAntesDepois, desenharRetrospectiva } from './cartao.js';
 
@@ -107,6 +108,19 @@ function videoDe(e){
   const v = VIDEOS[chaveVideo(e.n)]; if(v && v.video) return v.video;
   if(e.video) return e.video;
   const a = videoAuto(e.n); return a ? a.url : '';
+}
+function chipsTecnica(e){
+  return tecnicasDe(e).map(t=>`<button class="chip bi tq" data-a="tecnica" data-t="${t.id}" aria-label="Como fazer ${esc(t.nome)}">${esc(t.nome)} <span aria-hidden="true">ⓘ</span></button>`).join('');
+}
+function tecnicaSheet(id){
+  const t = tecnica(id); if(!t) return;
+  const outras = TECNICAS.filter(x=>x.id!==id).map(x=>`<button class="chip tq-o" data-a="tecnica" data-t="${x.id}">${esc(x.nome)}</button>`).join('');
+  openSheet(`<p class="eyebrow">Como fazer</p><h2 style="margin-top:6px">${esc(t.nome)}</h2>
+    <p class="tq-res">${esc(t.resumo)}</p>
+    <ol class="tq-passos">${t.passos.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>
+    ${t.obs?`<p class="tip"><b>Atenção:</b> ${esc(t.obs)}</p>`:''}
+    <div class="btns" style="margin-top:14px"><button class="btn primary" data-a="close">Entendi</button></div>
+    <details class="tq-mais"><summary>Outras técnicas</summary><div class="chips">${outras}</div></details>`);
 }
 function videoLink(e){ const u = videoDe(e); return u ? `<a class="vlink" href="${esc(u)}" data-video="1" data-t="${esc(e.n)}" target="_blank" rel="noopener noreferrer">${ICON.play} Ver execução</a>` : ''; }
 // Vídeo dentro do app (player do YouTube embutido); outros links abrem fora
@@ -1281,7 +1295,7 @@ function vTreino(L){
   const ex = W.ex.map((e,i)=>{
     const sug = suggest(e, 0, L, FICHA.id);
     return `<article class="ex"><div class="ex-h"><span class="ex-num">${pad(i+1)}</span><div>
-      <h3>${esc(e.n)}</h3><div class="chips"><span class="chip">${e.s} × ${range(e.r)}</span><span class="chip">Descanso ${restTxt(e.rest)}</span>${e.bi?'<span class="chip bi">Bi-set</span>':''}</div></div></div>
+      <h3>${esc(e.n)}</h3><div class="chips"><span class="chip">${e.s} × ${range(e.r)}</span><span class="chip">Descanso ${restTxt(e.rest)}</span>${chipsTecnica(e)}</div></div></div>
       ${e.tip?`<p class="tip"><b>Dica:</b> ${esc(e.tip)}</p>`:''}${videoLink(e)}
       ${sug ? `<p class="last">Última vez (${fmtDate(sug.le.s.start)}): ${lastSummary(sug.le.e, e)}</p>${sugBlock(sug, e)}` : ''}${avisoEstagnado(e)}
       <div style="height:6px"></div></article>`;
@@ -1322,7 +1336,7 @@ function exCard(e, i){
   return `<article class="ex${complete?' complete':''}" id="ex-${i}">
     <div class="ex-h"><span class="ex-num">${pad(i+1)}</span><div>
       <h3>${esc(e.n)}</h3>
-      <div class="chips"><span class="chip">${e.s} × ${range(e.r)}</span><span class="chip">${restTxt(e.rest)}</span>${e.bi?'<span class="chip bi">Bi-set</span>':''}<span class="chip ok" id="ex-ok-${i}"${complete?'':' hidden'}>Concluído</span></div>
+      <div class="chips"><span class="chip">${e.s} × ${range(e.r)}</span><span class="chip">${restTxt(e.rest)}</span>${chipsTecnica(e)}<span class="chip ok" id="ex-ok-${i}"${complete?'':' hidden'}>Concluído</span></div>
     </div><button class="swapbtn" data-a="swap" data-ei="${i}" aria-label="Trocar ${esc(e.n)} por outro exercício">${ICON.swap}<span>Trocar</span></button></div>
     ${e.orig?`<p class="swapped">Substituído hoje (era <b>${esc(e.orig.n)}</b>) <button class="link" data-a="swap-undo" data-ei="${i}">Voltar ao original</button></p>`:''}
     ${e.tip?`<p class="tip"><b>Dica:</b> ${esc(e.tip)}</p>`:''}${videoLink(e)}
@@ -2232,6 +2246,7 @@ document.addEventListener('click', async e=>{
     case 'force-start': S.draft=null; LS.set(kDraft(), null); stopRest(); closeSheet(true); startWorkout(t.dataset.l); break;
     case 'check': toggleSet(+t.dataset.ei, +t.dataset.si); break;
     case 'addset': addSet(+t.dataset.ei); break;
+    case 'tecnica': tecnicaSheet(t.dataset.t); break;
     case 'swap': if(S.draft) swapSheet(+t.dataset.ei); break;
     case 'swap-go': { const v = $('#swap-n'); if(S.draft) swapEx(+t.dataset.ei, v ? v.value : ''); break; }
     case 'swap-undo': if(S.draft) undoSwap(+t.dataset.ei); break;

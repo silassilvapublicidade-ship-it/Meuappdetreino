@@ -15,7 +15,7 @@ self.addEventListener('fetch', e => {
     e.respondWith(
       fetch(req)
         .then(res => { if (res.ok) { const c = res.clone(); caches.open(CACHE).then(x => x.put('/', c)); } return res; })
-        .catch(() => caches.match('/').then(m => m || new Response('<h1>Sem internet</h1><p>Abra o app uma vez com internet para usar offline.</p>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } })))
+        .catch(() => caches.match('/', { ignoreVary: true }).then(m => m || new Response('<h1>Sem internet</h1><p>Abra o app uma vez com internet para usar offline.</p>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } })))
     );
     return;
   }
@@ -23,7 +23,7 @@ self.addEventListener('fetch', e => {
   // Arquivos do app (têm nome com versão): usa a cópia guardada, senão busca e guarda.
   if (url.pathname.startsWith('/assets/') || /\.(png|svg|ico|webmanifest|woff2?)$/.test(url.pathname)) {
     e.respondWith(
-      caches.match(req).then(m => m || fetch(req).then(res => {
+      caches.match(req, { ignoreVary: true }).then(m => m || fetch(req).then(res => {
         if (res.ok) { const c = res.clone(); caches.open(CACHE).then(x => x.put(req, c)); }
         return res;
       }))

@@ -2523,7 +2523,7 @@ if(import.meta.env.PROD && 'serviceWorker' in navigator){
       const atuais = performance.getEntriesByType('resource').map(r=>r.name)
         .filter(u=>{ try{ const x = new URL(u); return x.origin===location.origin && (/^\/assets\//.test(x.pathname) || /\.(png|webmanifest)$/.test(x.pathname)); }catch(e){ return false; } });
       const cache = await caches.open('mt-app');
-      await Promise.all(atuais.map(u=>cache.match(u).then(m=>m || cache.add(u)).catch(()=>{})));
+      await Promise.all(atuais.map(u=>cache.match(u, {ignoreVary:true}).then(m=>m || cache.add(u)).catch(()=>{})));
       const set = new Set(atuais);
       (await cache.keys()).forEach(req=>{ const p = new URL(req.url).pathname; if(/^\/assets\//.test(p) && !set.has(req.url)) cache.delete(req); });
     }catch(e){}

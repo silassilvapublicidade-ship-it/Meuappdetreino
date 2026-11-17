@@ -93,9 +93,11 @@ async function treinoTerminado(id: string) {
   const nome = primeiroNome(perfil?.nome);
   const min = s.dur_s ? Math.round(s.dur_s / 60) : 0;
   const cardio = s.letter === "CARDIO";
+  const aula = cardio && (s.workout_name === "Spinning" || s.workout_name === "Jump");
+  const icone = s.workout_name === "Spinning" ? "🚴" : "🤸";
   return enviar(await querem(outros, "grupo"), {
-    title: cardio ? `${nome} fez cardio 🏃` : `${nome} terminou o treino 💪`,
-    body: (cardio ? "Cardio registrado" : `Treino ${s.letter}${s.workout_name ? " · " + s.workout_name : ""}`) +
+    title: aula ? `${nome} fez aula de ${String(s.workout_name).toLowerCase()} ${icone}` : cardio ? `${nome} fez cardio 🏃` : `${nome} terminou o treino 💪`,
+    body: (aula ? "Aula registrada" : cardio ? "Cardio registrado" : `Treino ${s.letter}${s.workout_name ? " · " + s.workout_name : ""}`) +
       (min ? ` · ${min} min` : "") + ". Toque para reagir.",
     url: "/?v=hoje",
     tag: "treino-" + s.user_id,

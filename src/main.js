@@ -89,9 +89,21 @@ const S = {
 };
 /* ---------- Cardio ---------- */
 const CARDIO_TIPOS = ['Esteira','Corrida na rua','Caminhada','Bicicleta','Elíptico','Escada','Remo','Air bike','Outro'];
+// Aulas: gasto estimado por MET (equivalente metabólico) conforme a intensidade
+const AULAS = {
+  'Spinning': { ico:'🚴', met:{ leve:5.5, moderada:7, forte:8.5, 'muito forte':10.5 }, km:true },
+  'Jump':     { ico:'🤸', met:{ leve:4.5, moderada:6, forte:7.5, 'muito forte':9 }, km:false }
+};
+const INTENS = [['leve','Leve','dá para conversar'],['moderada','Moderada','fala frases curtas'],['forte','Forte','fala poucas palavras'],['muito forte','Muito forte','no limite']];
 function ehCardio(s){ return !!s && s.letter==='CARDIO'; }
-function letraCurta(s){ return ehCardio(s) ? '♥' : s.letter; }
-function nomeSessao(s){ return ehCardio(s) ? 'Cardio ('+s.wname+')' : 'Treino '+s.letter; }
+function ehAula(s){ return ehCardio(s) && !!AULAS[s.wname]; }
+function letraCurta(s){ return ehAula(s) ? AULAS[s.wname].ico : ehCardio(s) ? '♥' : s.letter; }
+function nomeSessao(s){ return ehAula(s) ? 'Aula de '+s.wname.toLowerCase() : ehCardio(s) ? 'Cardio ('+s.wname+')' : 'Treino '+s.letter; }
+function kcalAula(tipo, intens, min){
+  const a = AULAS[tipo], b = S.body[S.body.length-1];
+  if(!a || !b || !min) return null;
+  return Math.round(a.met[intens||'moderada'] * b.kg * min/60 / 5) * 5;
+}
 function dadosCardio(s){ const e = (s.ex||[])[0]; return (e && e.cardio) || {}; }
 const kDados = ()=>'mt.dados.'+UID;
 function metaSemana(){ return FICHA ? (SEMANA.filter(dd=>FICHA.W[FICHA.sched[dd]]).length || FICHA.order.length) : 3; }
@@ -1300,33 +1312,62 @@ function avisarReacoesNovas(){
 function cardioSheet(){
   const ult = LS.get('mt.cardio', {tipo:'Esteira', min:''});
   S.cdTipo = ult.tipo;
-  openSheet(`<h2>Registrar cardio</h2><p>Conta como dia de treino na semana, no grupo e nas conquistas.</p>
+  S.cdInt = LS.get('mt.cardio.int', 'forte');
+  openSheet(`<h2>Registrar cardio ou aula</h2><p>Conta como dia de treino na semana, no grupo e nas conquistas.</p>
+    <div class="aulas">${Object.entries(AULAS).map(([t,a])=>`<button class="aula-b${t===S.cdTipo?' on':''}" data-a="cd-tipo" data-t="${t}"><span aria-hidden="true">${a.ico}</span><b>${t}</b><small>aula</small></button>`).join('')}</div>
+    <p class="lbl" style="margin-top:12px">Outros cardios</p>
     <div class="chips-sel" id="cd-tipos">${CARDIO_TIPOS.map(t=>`<button class="chip-b${t===S.cdTipo?' on':''}" data-a="cd-tipo" data-t="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+    <div id="cd-int"></div>
     <div class="fgrid cd">
-      <label><span>Minutos</span><input class="inp" id="cd-min" inputmode="numeric" value="${esc(ult.min||'')}" placeholder="30"></label>
-      <label><span>Distância (km)</span><input class="inp" id="cd-km" inputmode="decimal" placeholder="opcional"></label>
+      <label><span>Minutos</span><input class="inp" id="cd-min" inputmode="numeric" value="${esc(LS.get('mt.cardio.min.'+S.cdTipo, ult.min||''))}" placeholder="${AULAS[S.cdTipo]?'45':'30'}"></label>
+      <label id="cd-km-l"><span>Distância (km)</span><input class="inp" id="cd-km" inputmode="decimal" placeholder="opcional"></label>
       <label><span>Calorias</span><input class="inp" id="cd-kcal" inputmode="numeric" placeholder="opcional"></label>
       <label><span>Dia</span><input class="inp" id="cd-d" type="date" value="${dayKey(Date.now())}" max="${dayKey(Date.now())}"></label></div>
-    <textarea class="notes sm" id="cd-obs" placeholder="Observações (opcional): inclinação, velocidade, como se sentiu…"></textarea>
-    <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="cd-save">Salvar cardio</button><button class="btn ghost" data-a="close">Cancelar</button></div>`);
+    <p class="note" id="cd-est" hidden></p>
+    <textarea class="notes sm" id="cd-obs" placeholder="Observações (opcional): professor, como se sentiu…"></textarea>
+    <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="cd-save" id="cd-save">Salvar</button><button class="btn ghost" data-a="close">Cancelar</button></div>`);
+  ajustarCardio();
+}
+// Mostra intensidade e estimativa de calorias quando é aula (spinning, jump)
+function ajustarCardio(){
+  const t = S.cdTipo, a = AULAS[t];
+  document.querySelectorAll('[data-a="cd-tipo"]').forEach(b=>b.classList.toggle('on', b.dataset.t===t));
+  const box = $('#cd-int'); if(!box) return;
+  box.innerHTML = a ? `<p class="lbl">Intensidade da aula</p><div class="intens">${INTENS.map(([k,l,d])=>`<button class="int-b${k===S.cdInt?' on':''}" data-a="cd-int" data-k="${k}"><b>${l}</b><small>${d}</small></button>`).join('')}</div>` : '';
+  const kmL = $('#cd-km-l'); if(kmL) kmL.hidden = !!a && !a.km;
+  const sv = $('#cd-save'); if(sv) sv.textContent = a ? 'Salvar aula de '+t.toLowerCase() : 'Salvar cardio';
+  estimarCardio();
+}
+function estimarCardio(){
+  const est = $('#cd-est'), kc = $('#cd-kcal'); if(!est || !kc) return;
+  const a = AULAS[S.cdTipo];
+  if(!a){ est.hidden = true; kc.placeholder = 'opcional'; return; }
+  const min = parseInt($('#cd-min').value, 10);
+  const k = kcalAula(S.cdTipo, S.cdInt, min);
+  est.hidden = false;
+  if(!S.body.length){ est.innerHTML = 'Registre seu peso (Evolução › Corpo) para o app estimar as calorias da aula. Ou digite as calorias do seu relógio.'; kc.placeholder = 'opcional'; return; }
+  kc.placeholder = k ? '≈ '+k : 'opcional';
+  est.innerHTML = k ? `Estimativa: <b>≈ ${k} kcal</b> (${fmtN(S.body[S.body.length-1].kg)} kg, intensidade ${S.cdInt}). Se tiver o número do relógio, digite nas calorias.` : 'Informe os minutos para estimar as calorias.';
 }
 function lerCardio(){
   const min = parseInt($('#cd-min').value, 10), km = num($('#cd-km').value), kcal = parseInt($('#cd-kcal').value, 10);
   if(!(min>=1 && min<=600)){ toast('Informe quantos minutos durou (1 a 600).', true); return null; }
   if(km!=null && !(km>0 && km<200)){ toast('Confira a distância.', true); return null; }
-  return { min, km: km||null, kcal: kcal>0 ? kcal : null, d: $('#cd-d').value || dayKey(Date.now()), obs: ($('#cd-obs').value||'').trim() };
+  const aula = !!AULAS[S.cdTipo];
+  const est = aula && !(kcal>0) ? kcalAula(S.cdTipo, S.cdInt, min) : null;
+  return { min, km: km||null, kcal: kcal>0 ? kcal : est, kcalEst: !!est, intens: aula ? S.cdInt : null, d: $('#cd-d').value || dayKey(Date.now()), obs: ($('#cd-obs').value||'').trim() };
 }
 function salvarCardio(){
   const c = lerCardio(); if(!c) return;
   const tipo = S.cdTipo || 'Outro';
-  LS.set('mt.cardio', {tipo, min:c.min});
+  LS.set('mt.cardio', {tipo, min:c.min}); LS.set('mt.cardio.min.'+tipo, c.min); if(c.intens) LS.set('mt.cardio.int', c.intens);
   const hoje = c.d===dayKey(Date.now());
   const fim = hoje ? Date.now() : new Date(c.d+'T19:00').getTime();
   const s = { id:uuid(), planId:null, letter:'CARDIO', wname:tipo, start: fim - c.min*60000, end: fim, dur: c.min*60, notes:c.obs,
-    ex:[{ key:'cardio', keys:[], n:tipo, parts:[tipo], sets:[], cardio:{ min:c.min, km:c.km, kcal:c.kcal } }], vol:0, done:0, total:0 };
+    ex:[{ key:'cardio', keys:[], n:tipo, parts:[tipo], sets:[], cardio:Object.assign({ min:c.min, km:c.km, kcal:c.kcal }, c.intens ? { aula:true, intens:c.intens, kcalEst:c.kcalEst } : {}) }], vol:0, done:0, total:0 };
   const r = registrarSessao(s);
   closeSheet(true); go('hoje');
-  abrirCompartilhar('semana', s, 'Cardio salvo! '+c.min+' min de '+tipo.toLowerCase()+'.'+r.extra, r.selo);
+  abrirCompartilhar('semana', s, (AULAS[tipo] ? AULAS[tipo].ico+' Aula de '+tipo.toLowerCase()+' salva! '+c.min+' min'+(c.kcal?' · '+(c.kcalEst?'≈ ':'')+c.kcal+' kcal':'')+'.' : 'Cardio salvo! '+c.min+' min de '+tipo.toLowerCase()+'.')+r.extra, r.selo);
   verificarMissoes();
   enviarPendentes();
 }
@@ -1860,8 +1901,8 @@ function vHistorico(){
     const pend = S.pending.some(p=>p.id===s.id);
     html += `<button class="hrow" data-a="hist" data-id="${esc(s.id)}">
       <span class="hl neon${ehCardio(s)?' cd':''}" aria-hidden="true">${esc(letraCurta(s))}</span>
-      <span><b>${esc(fmtDate(s.start))} · ${esc(ehCardio(s)?'Cardio · '+s.wname:s.wname)}</b><small>${mins(s.dur)} min${ehCardio(s) ? (dadosCardio(s).km?' · '+fmtN(dadosCardio(s).km,2)+' km':'') : ' · '+s.done+'/'+s.total+' séries'}${pend?' · esperando conexão':''}</small></span>
-      ${ehCardio(s) ? `<span class="hv">${dadosCardio(s).kcal?fmtInt(dadosCardio(s).kcal)+'<small> kcal</small>':mins(s.dur)+'<small> min</small>'}<small>cardio</small></span>` : `<span class="hv">${fmtInt(s.vol)}<small> kg</small><small>volume</small></span>`}</button>`;
+      <span><b>${esc(fmtDate(s.start))} · ${esc(ehAula(s)?'Aula · '+s.wname:ehCardio(s)?'Cardio · '+s.wname:s.wname)}</b><small>${mins(s.dur)} min${ehCardio(s) ? (dadosCardio(s).intens?' · '+dadosCardio(s).intens:'')+(dadosCardio(s).km?' · '+fmtN(dadosCardio(s).km,2)+' km':'') : ' · '+s.done+'/'+s.total+' séries'}${pend?' · esperando conexão':''}</small></span>
+      ${ehCardio(s) ? `<span class="hv">${dadosCardio(s).kcal?(dadosCardio(s).kcalEst?'~':'')+fmtInt(dadosCardio(s).kcal)+'<small> kcal</small>':mins(s.dur)+'<small> min</small>'}<small>${ehAula(s)?'aula':'cardio'}</small></span>` : `<span class="hv">${fmtInt(s.vol)}<small> kg</small><small>volume</small></span>`}</button>`;
   });
   return head+`<p class="note" style="margin:-6px 2px 0">${S.sessions.length} ${S.sessions.length===1?'treino registrado':'treinos registrados'}.</p>${html}`;
 }
@@ -2330,10 +2371,11 @@ function histDetail(id){
   const s = S.sessions.find(x=>x.id===id); if(!s) return;
   if(ehCardio(s)){
     const c = dadosCardio(s);
-    openSheet(`<h2>Cardio · ${esc(s.wname)}</h2><p style="text-transform:capitalize">${esc(fmtDate(s.start))}, ${hhmm(s.start)}</p>
+    const aula = ehAula(s);
+    openSheet(`<h2>${aula?AULAS[s.wname].ico+' Aula de '+esc(s.wname.toLowerCase()):'Cardio · '+esc(s.wname)}</h2><p style="text-transform:capitalize">${esc(fmtDate(s.start))}, ${hhmm(s.start)}</p>
       <div class="sum"><div class="tile"><div class="k">Tempo</div><div class="v">${mins(s.dur)}<small> min</small></div></div>
-      <div class="tile"><div class="k">Distância</div><div class="v">${c.km?fmtN(c.km,2)+'<small> km</small>':'—'}</div></div>
-      <div class="tile"><div class="k">Calorias</div><div class="v">${c.kcal?fmtInt(c.kcal):'—'}</div></div></div>
+      ${aula && !c.km ? `<div class="tile"><div class="k">Intensidade</div><div class="v sm" style="text-transform:capitalize">${esc(c.intens||'—')}</div></div>` : `<div class="tile"><div class="k">Distância</div><div class="v">${c.km?fmtN(c.km,2)+'<small> km</small>':'—'}</div></div>`}
+      <div class="tile"><div class="k">Calorias${c.kcalEst?' (est.)':''}</div><div class="v">${c.kcal?fmtInt(c.kcal):'—'}</div></div></div>
       ${s.notes?`<div class="dex"><b>Observações</b><div>${esc(s.notes)}</div></div>`:''}
       <div class="btns" style="margin-top:14px"><button class="btn primary" data-a="share" data-t="semana" data-id="${esc(s.id)}">${ICON.share} Compartilhar imagem</button>
       <button class="btn" data-a="h-edit" data-id="${esc(s.id)}">${ICON.edit} Editar</button>
@@ -2789,7 +2831,8 @@ document.addEventListener('click', async e=>{
     case 'biblioteca': bibliotecaSheet(); break;
     case 'reagir': reagir(t); break;
     case 'cardio': cardioSheet(); break;
-    case 'cd-tipo': S.cdTipo = t.dataset.t; document.querySelectorAll('#cd-tipos .chip-b').forEach(b=>b.classList.toggle('on', b===t)); break;
+    case 'cd-tipo': { S.cdTipo = t.dataset.t; const m = LS.get('mt.cardio.min.'+S.cdTipo, null); const mi = $('#cd-min'); if(m && mi) mi.value = m; ajustarCardio(); break; }
+    case 'cd-int': S.cdInt = t.dataset.k; ajustarCardio(); break;
     case 'cd-save': salvarCardio(); break;
     case 'h-edit': editarTreinoSheet(t.dataset.id); break;
     case 'he-del': { const ei=+t.dataset.ei, si=+t.dataset.si; S.editS.ex[ei].sets.splice(si,1); desenharEdicaoTreino(); break; }
@@ -2906,6 +2949,7 @@ document.addEventListener('click', async e=>{
 document.addEventListener('input', e=>{
   const el = e.target;
   if(el.id==='bib-q'){ filtrarBiblioteca(); return; }
+  if(el.id==='cd-min'){ estimarCardio(); return; }
   if(el.dataset && el.dataset.he && S.editS){ editarCampoTreino(el); return; }
   if(el.id==='cmp-range'){ const v=+el.value; const a=$('#cmp-img-a'), d=$('#cmp-div'); if(a) a.style.clipPath='inset(0 '+(100-v)+'% 0 0)'; if(d) d.style.left=v+'%'; return; }
   if(el.dataset && el.dataset.e && S.edit && el.tagName!=='SELECT'){ editInput(el); return; }

@@ -84,6 +84,52 @@ function equipamento(x){
   x.restore();
 }
 
+/* ---------- aulas: bike de spinning e mini trampolim (traço transparente) ---------- */
+function equipamentoAula(x, tipo){
+  const traco = a=>{ const g = x.createLinearGradient(-400,-300,400,300); g.addColorStop(0,`rgba(60,201,255,${a})`); g.addColorStop(1,`rgba(67,227,173,${a})`); return g; };
+  x.save();
+  x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(60,201,255,.5)'; x.shadowBlur = 18;
+  const linha = (pts, lw, a)=>{ x.beginPath(); pts.forEach(([px,py],i)=> i ? x.lineTo(px,py) : x.moveTo(px,py)); x.lineWidth = lw; x.strokeStyle = traco(a); x.stroke(); };
+  if(tipo==='Spinning'){
+    x.translate(W - 250, 560); x.rotate(-0.06);
+    // volante
+    x.beginPath(); x.arc(-200, 70, 150, 0, Math.PI*2); x.lineWidth = 7; x.strokeStyle = traco(0.2); x.stroke();
+    x.beginPath(); x.arc(-200, 70, 118, 0, Math.PI*2); x.lineWidth = 3; x.strokeStyle = traco(0.14); x.stroke();
+    x.beginPath(); x.arc(-200, 70, 34, 0, Math.PI*2); x.lineWidth = 5; x.strokeStyle = traco(0.2); x.stroke();
+    for(let i=0;i<8;i++){ const a = i*Math.PI/4; linha([[-200+Math.cos(a)*34, 70+Math.sin(a)*34],[-200+Math.cos(a)*118, 70+Math.sin(a)*118]], 2, 0.1); }
+    // base e quadro
+    linha([[-400, 270],[330, 270]], 12, 0.18);
+    linha([[-260, 270],[-140, -170]], 9, 0.2);
+    linha([[230, 270],[120, -40]], 9, 0.2);
+    linha([[-140, -170],[60, 100]], 9, 0.2);
+    linha([[60, 100],[140, -200]], 9, 0.2);
+    // banco e guidão
+    x.beginPath(); rr(x, 70, -238, 170, 34, 16); x.lineWidth = 6; x.strokeStyle = traco(0.22); x.stroke();
+    linha([[-140, -170],[-170, -280],[-300, -300],[-330, -270]], 8, 0.22);
+    // pedivela e pedal
+    x.beginPath(); x.arc(60, 100, 52, 0, Math.PI*2); x.lineWidth = 5; x.strokeStyle = traco(0.2); x.stroke();
+    linha([[60, 100],[130, 170]], 8, 0.22); linha([[105, 172],[160, 172]], 10, 0.22);
+  } else {
+    x.translate(W - 260, 600);
+    // linhas de salto
+    [[-40, -330, 120],[60, -380, 150],[150, -320, 110]].forEach(([cx, cy, r])=>{ x.beginPath(); x.arc(cx, cy, r, Math.PI*1.1, Math.PI*1.9); x.lineWidth = 4; x.strokeStyle = traco(0.14); x.stroke(); });
+    // armação e lona
+    x.beginPath(); x.ellipse(0, 0, 360, 70, 0, 0, Math.PI*2); x.lineWidth = 9; x.strokeStyle = traco(0.22); x.stroke();
+    x.beginPath(); x.ellipse(0, 0, 290, 50, 0, 0, Math.PI*2); x.lineWidth = 4; x.strokeStyle = traco(0.16); x.stroke();
+    x.fillStyle = 'rgba(60,201,255,.04)'; x.fill();
+    // molas
+    for(let i=0;i<18;i++){ const a = i*Math.PI*2/18, c = Math.cos(a), sn = Math.sin(a);
+      const p0 = [c*296, sn*52], p1 = [c*352, sn*68];
+      const pts = []; for(let k=0;k<=6;k++){ const t = k/6, off = (k%2 ? 7 : -7); pts.push([p0[0]+(p1[0]-p0[0])*t - sn*off, p0[1]+(p1[1]-p0[1])*t + c*off*0.3]); }
+      linha(pts, 2.5, 0.16); }
+    // pernas
+    [-290, -110, 110, 290].forEach(px=>{ const top = Math.sqrt(Math.max(0, 1 - (px/360)**2))*70; linha([[px, top],[px*1.08, 210]], 8, 0.2); linha([[px*1.08-24, 210],[px*1.08+24, 210]], 8, 0.2); });
+    // barra de apoio
+    linha([[0, -60],[0, -300]], 8, 0.2); linha([[-90, -300],[90, -300]], 9, 0.22);
+  }
+  x.restore();
+}
+
 /* ---------- peças ---------- */
 function marca(x, ts){
   x.textBaseline = 'alphabetic'; x.textAlign = 'left';
@@ -126,6 +172,17 @@ function stats(x, itens, y){
     x.font = `400 ${v.length>8?78:96}px ${DISPLAY}`; x.fillStyle = COR.ink; x.fillText(v, lft+w/2, y+116);
     x.font = `800 22px ${BODY}`; x.fillStyle = COR.muted; espacado(x, l, lft+w/2, y+164, 4);
   });
+}
+// barras de intensidade (1 a 4) dentro do terceiro painel das estatísticas
+function intensidade(x, n, y){
+  const gap = 22, w = (W-160-gap*2)/3, lft = 80 + 2*(w+gap);
+  const bw = 34, esp = 14, total = bw*4 + esp*3, x0 = lft + (w-total)/2, base = y + 126;
+  for(let i=0;i<4;i++){
+    const h = 34 + i*20, px = x0 + i*(bw+esp);
+    rr(x, px, base-h, bw, h, 8);
+    if(i < n){ x.save(); x.shadowColor = 'rgba(67,227,173,.7)'; x.shadowBlur = 16; const g = x.createLinearGradient(0, base-h, 0, base); g.addColorStop(0, i>=3 ? '#ffd166' : '#7ff5cf'); g.addColorStop(1, i>=3 ? '#ff8a3d' : '#2fcf98'); x.fillStyle = g; x.fill(); x.restore(); }
+    else { x.lineWidth = 3; x.strokeStyle = COR.line; x.stroke(); }
+  }
 }
 function check(x, cx, cy, r, cor){
   x.strokeStyle = cor; x.lineWidth = r*0.2; x.lineCap = 'round'; x.lineJoin = 'round';
@@ -211,15 +268,22 @@ export async function desenharSemana(d){
   await fontes();
   const [c, x] = base();
   const s = d.ref;
-  equipamento(x);
-  marca(x, d.data);
-  rotulo(x, s ? (s.letter==='CARDIO' ? 'CARDIO CONCLUÍDO' : 'TREINO CONCLUÍDO') : 'MINHA SEMANA', 400);
-  x.textAlign = 'left'; x.font = `400 230px ${DISPLAY}`; x.fillStyle = COR.ink;
   const cardio = s && s.letter==='CARDIO', cd = cardio ? ((s.ex||[])[0]||{}).cardio || {} : null;
-  x.fillText(s ? (cardio ? 'CARDIO' : 'TREINO '+String(s.letter||'')) : 'SEMANA', 72, 610);
-  x.font = `400 120px ${DISPLAY}`; x.fillStyle = gradTxt(x, 630, 740);
-  x.fillText(s ? String(s.wname||'').toUpperCase().slice(0,22) : 'DE TREINO', 76, 732);
-  stats(x, cardio
+  const aula = cardio && (cd.aula || s.wname==='Spinning' || s.wname==='Jump');
+  if(aula) equipamentoAula(x, s.wname); else equipamento(x);
+  marca(x, d.data);
+  rotulo(x, s ? (aula ? 'AULA CONCLUÍDA' : cardio ? 'CARDIO CONCLUÍDO' : 'TREINO CONCLUÍDO') : 'MINHA SEMANA', 400);
+  x.textAlign = 'left'; x.font = `400 230px ${DISPLAY}`; x.fillStyle = COR.ink;
+  x.fillText(s ? (aula ? String(s.wname).toUpperCase() : cardio ? 'CARDIO' : 'TREINO '+String(s.letter||'')) : 'SEMANA', 72, 610);
+  const sub = s ? (aula ? (cd.intens ? 'INTENSIDADE '+String(cd.intens).toUpperCase() : 'AULA') : String(s.wname||'').toUpperCase().slice(0,22)) : 'DE TREINO';
+  let fs = 120; x.font = `400 ${fs}px ${DISPLAY}`; while(x.measureText(sub).width > W-160 && fs > 70){ fs -= 6; x.font = `400 ${fs}px ${DISPLAY}`; }
+  x.fillStyle = gradTxt(x, 630, 740);
+  x.fillText(sub, 76, 732);
+  if(aula){
+    const NIV = { leve:1, moderada:2, forte:3, 'muito forte':4 };
+    stats(x, [[tempoTxt(s.dur), 'TEMPO'], [cd.kcal ? (cd.kcalEst?'~':'')+Math.round(cd.kcal)+' kcal' : '—', cd.kcalEst ? 'KCAL ESTIMADAS' : 'CALORIAS'], ['', 'INTENSIDADE']], 790);
+    intensidade(x, NIV[cd.intens] || 0, 790);
+  } else stats(x, cardio
     ? [[tempoTxt(s.dur), 'TEMPO'], [cd.km ? String(cd.km).replace('.',',')+' km' : '—', 'DISTÂNCIA'], [cd.kcal ? Math.round(cd.kcal)+' kcal' : '—', 'CALORIAS']]
     : s
     ? [[tempoTxt(s.dur), 'TEMPO'], [s.done+'/'+s.total, 'SÉRIES'], [Math.floor(s.vol||0).toLocaleString('pt-BR')+' kg', 'VOLUME']]

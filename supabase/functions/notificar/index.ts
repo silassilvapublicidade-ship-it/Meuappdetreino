@@ -3,6 +3,7 @@
 //   {tipo:'treino', id}   -> avisa o grupo que alguém terminou o treino
 //   {tipo:'reacao', id}   -> avisa quem recebeu a reação
 //   {tipo:'lembretes'}    -> lembrete nos dias de treino, na hora escolhida
+//   {tipo:'resumo'}       -> domingo à noite: resumo da semana de cada pessoa
 //   {tipo:'teste'}        -> chamado pelo app (com login): aviso de teste para a própria pessoa
 //   {tipo:'setup'}        -> cria as chaves VAPID se ainda não existirem (não precisa da chave interna)
 import webpush from "npm:web-push@3.6.7";
@@ -73,7 +74,7 @@ async function enviar(usuarios: string[], msg: Msg) {
   return ok;
 }
 
-async function querem(usuarios: string[], chave: "grupo" | "reacoes" | "lembrete") {
+async function querem(usuarios: string[], chave: "grupo" | "reacoes" | "lembrete" | "resumo") {
   if (!usuarios.length) return [];
   const { data } = await sb.from("profiles").select("id,notif").in("id", usuarios);
   const fora = new Set((data || []).filter((p) => p.notif && p.notif[chave] === false).map((p) => p.id));
@@ -151,6 +152,71 @@ async function lembretes() {
   return enviados;
 }
 
+// Início da semana (segunda 00:00 em Brasília) em ISO UTC
+function inicioSemanaISO() {
+  const a = agoraLocal();
+  const volta = (a.dia + 6) % 7; // dias desde segunda
+  const [y, m, d] = a.data.split("-").map(Number);
+  const seg = new Date(Date.UTC(y, m - 1, d - volta, 3, 0, 0)); // 00:00 em Brasília = 03:00 UTC
+  return seg.toISOString();
+}
+function toneladas(kg: number) {
+  return (kg / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: kg >= 10000 ? 0 : 1 });
+}
+function horasTxt(seg: number) {
+  const m = Math.round(seg / 60), h = Math.floor(m / 60), r = m % 60;
+  return h ? `${h}h${String(r).padStart(2, "0")}` : `${m} min`;
+}
+type Ex = { keys?: string[]; sets?: { p?: { kg?: number | string | null }[] }[] };
+function maximos(lista: { ex: Ex[] | null }[]) {
+  const best: Record<string, number> = {};
+  for (const s of lista) for (const e of s.ex || []) (e.keys || []).forEach((k, i) => {
+    for (const st of e.sets || []) {
+      const kg = Number(st.p?.[i]?.kg);
+      if (kg > 0 && !(best[k] >= kg)) best[k] = kg;
+    }
+  });
+  return best;
+}
+async function resumo(previa?: Msg[]) {
+  const { data: subs } = await sb.from("push_subs").select("user_id");
+  const usuarios = await querem([...new Set((subs || []).map((x) => x.user_id))], "resumo");
+  const ini = inicioSemanaISO();
+  let enviados = 0;
+  for (const uid of usuarios) {
+    const { data: todas } = await sb.from("sessions").select("letter,started_at,dur_s,vol,ex").eq("user_id", uid).order("started_at", { ascending: true }).limit(2000);
+    const lista = todas || [];
+    const semana = lista.filter((s) => s.started_at >= ini);
+    const treinos = semana.filter((s) => s.letter !== "CARDIO");
+    const cardios = semana.length - treinos.length;
+    const dias = new Set(semana.map((s) => new Date(s.started_at).toLocaleDateString("en-CA", { timeZone: FUSO }))).size;
+    let msg: Msg;
+    if (!semana.length) {
+      msg = { title: "Nova semana começa amanhã 💪", body: "Essa semana passou sem treino. Que tal abrir a próxima com tudo?", url: "/?v=hoje", tag: "resumo" };
+    } else {
+      const antes = maximos(lista.filter((s) => s.started_at < ini));
+      const agora = maximos(treinos);
+      const recordes = Object.keys(agora).filter((k) => antes[k] != null && agora[k] > antes[k]).length;
+      const vol = treinos.reduce((n, s) => n + (Number(s.vol) || 0), 0);
+      const tempo = semana.reduce((n, s) => n + (Number(s.dur_s) || 0), 0);
+      const partes = [
+        vol ? `${toneladas(vol)} t levantadas` : "",
+        tempo ? `${horasTxt(tempo)} de treino` : "",
+        recordes ? `${recordes} ${recordes > 1 ? "recordes" : "recorde"}` : "",
+        cardios ? `${cardios} cardio${cardios > 1 ? "s" : ""}` : "",
+      ].filter(Boolean);
+      msg = {
+        title: `Sua semana: ${treinos.length} ${treinos.length === 1 ? "treino" : "treinos"} em ${dias} ${dias === 1 ? "dia" : "dias"} 🔥`,
+        body: (partes.join(" · ") || "Semana registrada") + ". Toque para ver seu card.",
+        url: "/?card=semana",
+        tag: "resumo",
+      };
+    }
+    if (previa) previa.push(msg); else enviados += await enviar([uid], msg);
+  }
+  return enviados;
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -160,7 +226,7 @@ const CORS = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return new Response("método", { status: 405 });
-  let corpo: { tipo?: string; id?: string } = {};
+  let corpo: { tipo?: string; id?: string; previa?: boolean } = {};
   try { corpo = await req.json(); } catch { /* vazio */ }
   try {
     if (corpo.tipo === "setup") {
@@ -181,6 +247,8 @@ Deno.serve(async (req) => {
     if (corpo.tipo === "treino" && corpo.id) n = await treinoTerminado(corpo.id);
     else if (corpo.tipo === "reacao" && corpo.id) n = await reacao(corpo.id);
     else if (corpo.tipo === "lembretes") n = await lembretes();
+    else if (corpo.tipo === "resumo" && corpo.previa) { const pv: Msg[] = []; await resumo(pv); return Response.json({ ok: true, previa: pv }); }
+    else if (corpo.tipo === "resumo") n = await resumo();
     else return new Response("tipo", { status: 400 });
     return Response.json({ ok: true, enviados: n });
   } catch (e) {

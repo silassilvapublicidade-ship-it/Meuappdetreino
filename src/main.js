@@ -12,6 +12,7 @@ import {
 import { calcular as calcConquistas, nivel, semanasAtivas, chaveDia, NIVEIS } from './conquistas.js';
 import { prepararCatalogo, acharNoCatalogo, GRUPOS } from './catalogo.js';
 import { tecnicasDe, tecnica, TECNICAS } from './tecnicas.js';
+import { sequencia, missoesDaSemana, TEMAS, aplicarTema, metaAgua, litros } from './engaja.js';
 import { suportaPush, ehIOS, instalado as pwaInstalado, permissao, assinaturaAtual, assinar, cancelar as cancelarPush } from './push.js';
 import * as D from './dados.js';
 import { desenharSemana, desenharMes, desenharConquista, desenharAntesDepois, desenharRetrospectiva } from './cartao.js';
@@ -74,7 +75,8 @@ let EDITOR = false;       // só o editor (Silas) cadastra os links de vídeo
 let ADMIN = false;        // acesso à área do admin
 let AVISOS = [];          // avisos do admin para todos
 let METAS = { peso:null, gordura:null, data:null };
-let NOTIF = { grupo:true, reacoes:true, lembrete:true }, LEM_HORA = '';
+let NOTIF = { grupo:true, reacoes:true, lembrete:true, resumo:true }, LEM_HORA = '';
+let MISSOES = [], TEMA = 'neon', AGUA = { dias:{}, manual:null };
 const VERSAO = typeof __VERSAO__ !== 'undefined' ? __VERSAO__ : 'dev';
 const S = {
   view:'carregando', auth:'entrar', authMsg:'', authErr:'',
@@ -642,29 +644,323 @@ function vHoje(){
     <button class="tile" data-a="evo" data-t="corpo" style="text-align:left;color:inherit;font:inherit"><span class="k">Peso</span><span class="v">${lastBody ? fmtN(lastBody.kg)+'<small> kg</small>' : '<small>registrar</small>'}</span></button>
   </div>`;
   let date = new Date().toLocaleDateString('pt-BR',{weekday:'long', day:'numeric', month:'long'}); date = date.charAt(0).toUpperCase()+date.slice(1);
-  return `<header class="top"><span class="date">${esc(date)}<small class="ola">Olá, ${esc((NOME||'').split(' ')[0])}${INSTA?' · '+arroba(INSTA):''}</small></span><span class="top-r">${statusPill()}${avatarBtn()}</span></header>
+  return `<header class="top"><span class="date">${esc(date)}<small class="ola">Olá, ${esc((NOME||'').split(' ')[0])}${INSTA?' · '+arroba(INSTA):''}</small></span><span class="top-r">${chipSeq()}${statusPill()}${avatarBtn()}</span></header>
     ${avisosHoje()}
     ${cardRetro()}
     ${cardInstalar()}
     ${cardNotif()}
     ${cardFichaVencendo()}
     ${hero}
-    <p class="todayline">${today}</p>
+    <p class="todayline">${today}</p>${linhaSeqHoje()}
     <button class="btn sm ghost cd-btn" data-a="cardio">♥ Registrar cardio</button>
     <div class="section"><div class="card-h"><h2 class="h2">Esta semana</h2><button class="link" data-a="share" data-t="semana">${ICON.share} Compartilhar</button></div><div class="week">${cells}</div></div>
+    ${cardAgua()}
+    ${cardMissoes()}
     <div class="section">${nivelStrip()}</div>
     <div class="section">${tiles}</div>
     ${grupoCard()}`;
 }
 function nivelStrip(){
-  const nv = nivel(S.sessions.length);
+  const nv = nivel(pontos());
   const sem = semanasAtivas(S.sessions.map(s=>chaveDia(s.start)));
   const nc = minhasConquistas().filter(c=>c.at).length;
   return `<button class="lvl" data-a="evo" data-t="conquistas" aria-label="Nível ${esc(nv.nome)}, ${sem} semanas ativas, ${nc} conquistas. Ver conquistas.">
-    <span class="lvl-fire${sem?'':' off'}"><span aria-hidden="true">🔥</span><b>${sem}</b><small>${sem===1?'semana ativa':'semanas ativas'}</small></span>
-    <span class="lvl-main"><span class="lvl-top"><b>Nível ${esc(nv.nome)}</b><small>${nv.prox ? 'faltam '+(nv.prox.n-nv.n)+' para '+esc(nv.prox.nome) : 'nível máximo'}</small></span>
+    <span class="lvl-fire${sem?'':' off'}"><span aria-hidden="true">💪</span><b>${sem}</b><small>${sem===1?'semana ativa':'semanas ativas'}</small></span>
+    <span class="lvl-main"><span class="lvl-top"><b>Nível ${esc(nv.nome)}</b><small>${nv.prox ? 'faltam '+(nv.prox.n-nv.n)+' pontos para '+esc(nv.prox.nome) : 'nível máximo'}</small></span>
     <span class="bar"><i style="width:${Math.round(nv.pct*100)}%"></i></span>
     <small class="lvl-c">🏅 ${nc} ${nc===1?'conquista':'conquistas'} · ver todas ›</small></span></button>`;
+}
+
+/* ========== Engajamento: sequência, missões, recordes, água e temas ========== */
+function pontos(){ return S.sessions.length + MISSOES.length; }
+function diasTreinados(){ return S.sessions.map(s=>chaveDia(s.start)); }
+function minhaSequencia(){ return sequencia({ dias: diasTreinados(), sched: FICHA ? FICHA.sched : null }); }
+const reduzMov = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Confete leve em canvas, com as cores do tema
+function confete(forca){
+  if(reduzMov()) return;
+  const cv = document.createElement('canvas'); cv.className = 'confete'; document.body.appendChild(cv);
+  const W = cv.width = innerWidth*devicePixelRatio, H = cv.height = innerHeight*devicePixelRatio, ctx = cv.getContext('2d');
+  const css = getComputedStyle(document.documentElement);
+  const cores = [css.getPropertyValue('--mint'), css.getPropertyValue('--cyan'), '#ffffff', '#ffd166'].map(c=>c.trim()||'#fff');
+  const N = Math.round(90*(forca||1));
+  const P = Array.from({length:N}, ()=>({ x: W*(0.2+Math.random()*0.6), y: H*0.35, vx:(Math.random()-0.5)*W*0.018, vy:-(Math.random()*H*0.022+H*0.008),
+    r: (4+Math.random()*6)*devicePixelRatio, c: cores[Math.floor(Math.random()*cores.length)], a: Math.random()*6, va:(Math.random()-0.5)*0.3 }));
+  const t0 = performance.now();
+  (function quadro(t){
+    const dt = t - t0; ctx.clearRect(0,0,W,H);
+    P.forEach(p=>{ p.vy += H*0.0009; p.x += p.vx; p.y += p.vy; p.a += p.va;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.a); ctx.globalAlpha = Math.max(0, 1 - dt/1900); ctx.fillStyle = p.c; ctx.fillRect(-p.r/2,-p.r/4,p.r,p.r/2); ctx.restore(); });
+    if(dt < 1900) requestAnimationFrame(quadro); else cv.remove();
+  })(t0);
+}
+function vibrar(p){ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} }
+function somFesta(){
+  if(!S.sound || !AC) return;
+  try{ const t0 = AC.currentTime+0.02;
+    [[0,660],[0.09,880],[0.18,1100],[0.3,1320]].forEach(([o,f])=>{ const osc=AC.createOscillator(), g=AC.createGain(); osc.type='triangle'; osc.frequency.value=f;
+      g.gain.setValueAtTime(0.0001,t0+o); g.gain.exponentialRampToValueAtTime(0.25,t0+o+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t0+o+0.22);
+      osc.connect(g); g.connect(AC.destination); osc.start(t0+o); osc.stop(t0+o+0.25); });
+  }catch(e){}
+}
+// Faixa de comemoração que aparece por cima da tela
+function festa(ico, titulo, texto){
+  const old = document.querySelector('.festa'); if(old) old.remove();
+  const el = document.createElement('div'); el.className = 'festa'; el.setAttribute('role','status');
+  el.innerHTML = `<span class="festa-i" aria-hidden="true">${ico}</span><span><b>${esc(titulo)}</b><small>${esc(texto)}</small></span>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('on'));
+  setTimeout(()=>{ el.classList.remove('on'); setTimeout(()=>el.remove(), 400); }, 3800);
+}
+
+/* ----- 1. Recorde na hora da série ----- */
+// Melhor carga e, para cada carga, o máximo de repetições já feitas antes deste treino.
+function historicoEx(k, antes){
+  let kg = null; const reps = {};
+  S.sessions.forEach(s=>{ if(s.start>=antes) return; (s.ex||[]).forEach(e=>(e.keys||[]).forEach((kk,i)=>{ if(kk!==k) return;
+    e.sets.forEach(st=>{ const p = st.p[i]||{}, w = num(p.kg), r = num(p.r); if(!w) return; if(kg==null||w>kg) kg = w; if(r && (!reps[w]||r>reps[w])) reps[w] = r; }); })); });
+  return { kg, reps };
+}
+function checarRecorde(i, si){
+  const d = S.draft; if(!d) return;
+  const e = d.w.ex[i], st = d.ex[i].sets[si];
+  (e.keys||[]).forEach((k,pi)=>{
+    const w = num(st.p[pi]&&st.p[pi].kg), r = num(st.p[pi]&&st.p[pi].r);
+    if(!w) return;
+    const h = historicoEx(k, d.start); if(h.kg==null) return; // sem histórico: primeira vez não é recorde
+    // o que já foi feito neste treino antes desta série
+    let kgHoje = null, repsHoje = 0;
+    d.ex[i].sets.forEach((x,xi)=>{ if(xi===si || !x.done) return; const pw = num(x.p[pi]&&x.p[pi].kg), pr = num(x.p[pi]&&x.p[pi].r); if(pw && (kgHoje==null||pw>kgHoje)) kgHoje = pw; if(pw===w && pr>repsHoje) repsHoje = pr; });
+    const nome = e.parts.length>1 ? e.parts[pi] : e.n;
+    const topo = Math.max(h.kg, kgHoje||0);
+    if(w > topo){
+      d.prs = (d.prs||[]).concat([{ n:nome, kg:w, antes:h.kg }]);
+      festa('🏆', 'Novo recorde!', `${nome}: ${fmtN(w)} kg (antes ${fmtN(h.kg)} kg)`);
+      confete(1); vibrar([40,40,120]); somFesta(); touchDraft();
+    } else if(r && w===h.kg && (kgHoje==null || kgHoje<w) && h.reps[w] && r > h.reps[w]){
+      d.prs = (d.prs||[]).concat([{ n:nome, kg:w, r, antesR:h.reps[w] }]);
+      festa('💥', 'Recorde de repetições!', `${nome}: ${r} reps com ${fmtN(w)} kg (antes ${h.reps[w]})`);
+      confete(0.6); vibrar([40,40,80]); somFesta(); touchDraft();
+    }
+  });
+}
+
+/* ----- 2. Tela de fim de treino ----- */
+function topSet(e){ let b = null; e.sets.forEach(st=>{ const p = st.p[0]||{}; const kg = num(p.kg)||0, r = num(p.r)||0; if(!b || kg>b.kg || (kg===b.kg && r>b.r)) b = {kg, r}; }); return b; }
+function resumoTreinoSheet(s, prs, extra, selo){
+  const ant = S.sessions.find(x=>x.id!==s.id && x.letter===s.letter && x.start<s.start && !ehCardio(x));
+  const dv = ant && ant.vol ? Math.round((s.vol-ant.vol)/ant.vol*100) : null;
+  const dm = ant ? mins(s.dur) - mins(ant.dur) : null;
+  const seq = minhaSequencia();
+  const linhas = s.ex.map(e=>{
+    const t = topSet(e); if(!t) return '';
+    const antE = ant && (ant.ex||[]).find(x=>x.key===e.key);
+    const tA = antE ? topSet(antE) : null;
+    const delta = tA && t.kg && tA.kg ? t.kg - tA.kg : null;
+    const tag = delta==null ? '<span class="rs-d nv">novo</span>' : delta>0 ? `<span class="rs-d up">▲ ${fmtN(delta)} kg</span>` : delta<0 ? `<span class="rs-d dn">▼ ${fmtN(-delta)} kg</span>` : (t.r>tA.r ? `<span class="rs-d up">▲ ${t.r-tA.r} rep</span>` : '<span class="rs-d eq">=</span>');
+    return `<li><span class="rs-n">${esc(e.n)}</span><span class="rs-v">${t.kg?fmtN(t.kg)+' kg × ':''}${t.r||'–'}</span>${tag}</li>`;
+  }).join('');
+  const recs = (prs||[]).map(p=>`<li>${esc(p)}</li>`).join('');
+  const missoes = missoesAtuais();
+  const mOk = missoes.filter(m=>m.ok).length;
+  openSheet(`<div class="rs-top"><span class="rs-ico" aria-hidden="true">${prs && prs.length ? '🏆' : '💪'}</span>
+      <h2>Treino ${esc(s.letter)} concluído!</h2><p>${esc(s.wname||'')}</p></div>
+    <div class="sum"><div class="tile"><div class="k">Tempo</div><div class="v">${mins(s.dur)}<small> min</small></div>${dm!=null&&dm!==0?`<div class="dlt">${dm>0?'+':''}${dm} min</div>`:''}</div>
+      <div class="tile"><div class="k">Séries</div><div class="v">${s.done}<small>/${s.total}</small></div></div>
+      <div class="tile"><div class="k">Volume</div><div class="v">${fmtInt(s.vol)}<small> kg</small></div>${dv!=null?`<div class="dlt ${dv>=0?'up':'dn'}">${dv>=0?'▲':'▼'} ${Math.abs(dv)}%</div>`:''}</div></div>
+    ${ant?`<p class="note" style="margin:6px 0 0">Comparado com o Treino ${esc(s.letter)} de ${fmtDate(ant.start)}.</p>`:''}
+    ${recs?`<ul class="prs rs-prs">${recs}</ul>`:''}
+    <div class="rs-strip"><button class="rs-b" data-a="seq"><span aria-hidden="true">🔥</span><b>${seq.n}</b><small>${seq.n===1?'dia seguido':'dias seguidos'}</small></button>
+      <button class="rs-b" data-a="missoes"><span aria-hidden="true">🎯</span><b>${mOk}/${missoes.length}</b><small>missões</small></button>
+      <button class="rs-b" data-a="evo" data-t="conquistas"><span aria-hidden="true">⭐</span><b>${esc(nivel(pontos()).nome)}</b><small>nível</small></button></div>
+    ${extra?`<p class="rs-extra">${esc(extra.trim())}</p>`:''}
+    ${linhas?`<p class="lbl" style="margin-top:16px">Melhor série de cada exercício</p><ul class="rs-ex">${linhas}</ul>`:''}
+    <div class="btns" style="margin-top:16px"><button class="btn primary" data-a="rs-share">${ICON.share} Compartilhar card</button><button class="btn ghost" data-a="close">Fechar</button></div>`);
+  S.rsCard = { s, titulo: 'Treino '+s.letter+' salvo!'+extra, selo };
+  if(prs && prs.length || selo){ confete(prs && prs.length ? 1.3 : 1); vibrar([60,50,60]); somFesta(); }
+}
+
+/* ----- 3. Sequência com chama ----- */
+function chipSeq(){
+  if(!FICHA) return '';
+  const q = minhaSequencia();
+  return `<button class="seqchip${q.n?'':' off'}${q.emRisco?' risco':''}" data-a="seq" aria-label="Sequência de ${q.n} dias de treino. Ver detalhes."><span class="fl" aria-hidden="true">🔥</span><b>${q.n}</b></button>`;
+}
+function linhaSeqHoje(){
+  const q = minhaSequencia();
+  if(q.hojeFeito || !q.hojeTreino) return '';
+  if(q.emRisco) return `<div class="aviso n-alerta" role="status"><span class="av-i" aria-hidden="true">🔥</span><p><b>Sua sequência de ${q.n} ${q.n===1?'dia':'dias'} está em risco.</b> A proteção deste mês já foi usada: treine hoje para não zerar.</p></div>`;
+  return q.n ? `<p class="seqline">🔥 Treine hoje e a sequência sobe para <b>${q.n+1}</b>.</p>` : '';
+}
+function seqSheet(){
+  const q = minhaSequencia(), dias = new Set(diasTreinados()), prot = new Set(q.protegidos);
+  const hoje = chaveDia(Date.now()), primeiro = [...dias].sort()[0] || hoje;
+  const cel = Array.from({length:14}, (_,j)=>{ const dt = new Date(); dt.setHours(12,0,0,0); dt.setDate(dt.getDate()-(13-j)); const dk = chaveDia(dt.getTime());
+    const plano = FICHA ? FICHA.sched[dt.getDay()] : null, treino = plano && plano!=='ativo' && plano!=='total';
+    const st = dias.has(dk) ? 'ok' : prot.has(dk) ? 'prot' : dk===hoje ? 'hoje' : treino && dk>primeiro ? 'perdeu' : 'folga';
+    const g = st==='ok' ? '🔥' : st==='prot' ? '🛡️' : st==='perdeu' ? '✕' : st==='hoje' ? '•' : '–';
+    return `<span class="sq-d ${st}"><small>${WD[dt.getDay()]}</small><b>${g}</b></span>`; }).join('');
+  openSheet(`<div class="sq-top"><span class="sq-fl" aria-hidden="true">🔥</span><b>${q.n}</b><small>${q.n===1?'dia de treino seguido':'dias de treino seguidos'}</small></div>
+    <div class="sum two"><div class="tile"><div class="k">Recorde</div><div class="v">${q.recorde}<small> dias</small></div></div>
+      <div class="tile"><div class="k">Proteção do mês</div><div class="v sm">${q.protecaoMes?'🛡️ disponível':'usada'}</div></div></div>
+    <p class="lbl" style="margin-top:14px">Últimos 14 dias</p><div class="sq-grid">${cel}</div>
+    <p class="note">Conta os dias em que você treinou. Dias de folga da ficha não quebram a sequência. Se faltar <b>um</b> dia de treino no mês, a proteção 🛡️ cobre sozinha. Faltando outro no mesmo mês, a sequência volta a zero.</p>
+    <div class="btns"><button class="btn ghost" data-a="close">Fechar</button></div>`);
+}
+
+/* ----- 4. Missões da semana ----- */
+function ctxMissoes(){
+  const wk = startOfWeek(Date.now()), wkAnt = wk - 7*864e5, kw = chaveDia(wk);
+  const sem = S.sessions.filter(s=>s.start>=wk), ant = S.sessions.filter(s=>s.start>=wkAnt && s.start<wk);
+  const treinos = sem.filter(s=>!ehCardio(s));
+  const metaDia = dk => metaAguaDe(dk);
+  return {
+    meta: metaSemana(), treinos: treinos.length, cardios: sem.length - treinos.length,
+    recordes: treinos.reduce((n,s)=>n+findPRs(s).length, 0),
+    peso: S.body.some(b=>b.d>=kw), completos: treinos.filter(s=>s.total && s.done>=s.total).length,
+    sabado: sem.some(s=>new Date(s.start).getDay()===6),
+    reacoes: new Set((S.reacoes||[]).filter(r=>r.from_user===UID && r.dia>=kw).map(r=>r.to_user+'|'+r.dia)).size,
+    aguaDias: Object.entries(AGUA.dias).filter(([dk,ml])=>dk>=kw && ml>=metaDia(dk)).length,
+    volume: treinos.reduce((n,s)=>n+(s.vol||0),0), volumeAntes: ant.filter(s=>!ehCardio(s)).reduce((n,s)=>n+(s.vol||0),0),
+    grupo: !!S.grupo
+  };
+}
+function missoesAtuais(){ return missoesDaSemana(ctxMissoes(), UID); }
+// Marca as missões recém-cumpridas: cada uma vale 1 ponto de nível
+function verificarMissoes(mostrar){
+  if(!UID || !FICHA) return;
+  const feitas = new Set(MISSOES);
+  const novas = missoesAtuais().filter(m=>m.ok && !feitas.has(m.id));
+  if(!novas.length) return;
+  const nv0 = nivel(pontos());
+  MISSOES = MISSOES.concat(novas.map(m=>m.id)).slice(-400);
+  guardarCache();
+  D.salvarMissoes(UID, MISSOES).catch(()=>{ LS.set('mt.missoes.pend.'+UID, true); });
+  if(mostrar!==false){
+    const m = novas[novas.length-1];
+    setTimeout(()=>{ festa('🎯', 'Missão cumprida! +1 ponto', m.txt); confete(0.7); vibrar([40,40,60]); }, 900);
+  }
+  const nv1 = nivel(pontos());
+  if(nv1.i>nv0.i) setTimeout(()=>avisarNivel(nv1), 4900);
+  if(S.view==='hoje' && !$('#sheet:not([hidden])')) render();
+}
+function avisarNivel(nv){
+  const t = TEMAS.find(x=>x.nivel===nv.i);
+  festa('⭐', 'Subiu para o nível '+nv.nome+'!', t ? 'Novo tema liberado: '+t.nome : 'Continue assim!');
+  confete(1.2);
+}
+function cardMissoes(){
+  if(!FICHA) return '';
+  const M = missoesAtuais(), ok = M.filter(m=>m.ok).length;
+  const fim = new Date(startOfWeek(Date.now()) + 7*864e5), faltam = Math.max(1, Math.ceil((fim - Date.now())/864e5));
+  return `<div class="section"><div class="card-h"><h2 class="h2">Missões da semana</h2><button class="link" data-a="missoes">${ok}/${M.length} · ${faltam} ${faltam===1?'dia':'dias'}</button></div>
+    <div class="ms-list">${M.map(linhaMissao).join('')}</div></div>`;
+}
+function linhaMissao(m){
+  const pct = Math.round(Math.min(1, m.feito/m.alvo)*100);
+  const val = m.un==='t' ? fmtN(m.feito,1)+' de '+fmtN(m.alvo,1)+' t' : m.feito+'/'+m.alvo;
+  return `<div class="ms${m.ok?' ok':''}"><span class="ms-i" aria-hidden="true">${m.ok?'✅':m.ico}</span><span class="ms-t"><b>${esc(m.txt)}</b>
+    <span class="bar sm" aria-hidden="true"><i style="width:${pct}%"></i></span></span><small>${m.ok?'+1 ponto':val}</small></div>`;
+}
+function missoesSheet(){
+  const M = missoesAtuais();
+  openSheet(`<h2>Missões da semana</h2><p>Três metas que mudam toda segunda-feira. Cada missão cumprida vale <b>1 ponto</b> para o seu nível, além dos treinos.</p>
+    <div class="ms-list">${M.map(linhaMissao).join('')}</div>
+    <p class="note">Você já cumpriu <b>${MISSOES.length}</b> ${MISSOES.length===1?'missão':'missões'} no total.</p>
+    <div class="btns"><button class="btn ghost" data-a="close">Fechar</button></div>`);
+}
+
+/* ----- Água ----- */
+function pesoAtual(){ const b = S.body[S.body.length-1]; return b ? b.kg : null; }
+function treinoNoDia(dk){ if(!FICHA) return false; const p = dk.split('-'); const v = FICHA.sched[new Date(+p[0], +p[1]-1, +p[2], 12).getDay()]; return !!v && v!=='ativo' && v!=='total'; }
+function metaAguaDe(dk){ return metaAgua({ peso: pesoAtual(), manual: AGUA.manual, treinoHoje: treinoNoDia(dk) || S.sessions.some(s=>chaveDia(s.start)===dk && !ehCardio(s)) }); }
+function aguaHoje(){ return AGUA.dias[chaveDia(Date.now())] || 0; }
+let aguaT = null;
+function salvarAguaDepois(){
+  clearTimeout(aguaT);
+  aguaT = setTimeout(async ()=>{
+    const pend = LS.get('mt.agua.pend.'+UID, {});
+    try{ await D.salvarAgua(UID, pend); LS.set('mt.agua.pend.'+UID, {}); }catch(e){ /* fica pendente e vai na próxima abertura */ }
+  }, 900);
+}
+function addAgua(ml){
+  const dk = chaveDia(Date.now()), meta = metaAguaDe(dk), antes = AGUA.dias[dk] || 0;
+  const novo = Math.max(0, Math.min(20000, antes + ml));
+  AGUA.dias[dk] = novo;
+  const pilha = LS.get('mt.agua.desf.'+UID, []); if(ml>0) LS.set('mt.agua.desf.'+UID, pilha.concat([{dk, ml}]).slice(-20));
+  const pend = LS.get('mt.agua.pend.'+UID, {}); pend[dk] = novo; LS.set('mt.agua.pend.'+UID, pend);
+  guardarCache(); salvarAguaDepois();
+  if(antes < meta && novo >= meta){ festa('💧', 'Meta de água batida!', litros(novo)+' L hoje. Seu corpo agradece.'); confete(0.8); vibrar([30,30,60]); }
+  else if(ml>0) vibrar(15);
+  atualizarAgua(); verificarMissoes();
+}
+function desfazerAgua(){
+  const pilha = LS.get('mt.agua.desf.'+UID, []), dk = chaveDia(Date.now());
+  const ult = pilha.length && pilha[pilha.length-1].dk===dk ? pilha.pop() : null;
+  if(!ult){ toast('Nada para desfazer hoje.'); return; }
+  LS.set('mt.agua.desf.'+UID, pilha);
+  AGUA.dias[dk] = Math.max(0, (AGUA.dias[dk]||0) - ult.ml);
+  const pend = LS.get('mt.agua.pend.'+UID, {}); pend[dk] = AGUA.dias[dk]; LS.set('mt.agua.pend.'+UID, pend);
+  guardarCache(); salvarAguaDepois(); atualizarAgua();
+}
+function cardAgua(){
+  return `<div class="section" id="agua-card">${blocoAgua()}</div>`;
+}
+function blocoAgua(){
+  const dk = chaveDia(Date.now()), ml = aguaHoje(), meta = metaAguaDe(dk), pct = Math.min(100, Math.round(ml/meta*100));
+  const copos = Math.max(0, Math.ceil((meta-ml)/250));
+  return `<div class="agua${ml>=meta?' ok':''}">
+    <button class="ag-g" data-a="agua" aria-label="Água: ${litros(ml)} de ${litros(meta)} litros. Ver detalhes."><span class="ag-w" style="height:${pct}%"></span><span class="ag-p">${pct}%</span></button>
+    <div class="ag-m"><div class="card-h" style="margin:0"><h2 class="h2" style="margin:0">Água hoje</h2><button class="link" data-a="agua">detalhes</button></div>
+      <p class="ag-v"><b>${litros(ml)}</b> de ${litros(meta)} L${ml>=meta?' · meta batida 🎉':copos?` · faltam ${copos} ${copos===1?'copo':'copos'}`:''}</p>
+      <div class="ag-bts"><button class="chipbtn" data-a="agua+" data-ml="250" aria-label="Mais um copo, 250 ml">+250 ml</button><button class="chipbtn" data-a="agua+" data-ml="500" aria-label="Mais uma garrafa, 500 ml">+500 ml</button><button class="chipbtn ghost" data-a="agua-undo" aria-label="Desfazer o último registro de água">↩</button></div></div></div>`;
+}
+function atualizarAgua(){
+  const c = $('#agua-card'); if(c) c.innerHTML = blocoAgua();
+  if(!$('#sheet').hidden && $('#ag-sheet')) aguaSheet();
+}
+function aguaSheet(){
+  const dk = chaveDia(Date.now()), ml = aguaHoje(), meta = metaAguaDe(dk), peso = pesoAtual();
+  const dias = Array.from({length:7}, (_,j)=>{ const dt = new Date(); dt.setHours(12,0,0,0); dt.setDate(dt.getDate()-(6-j)); const k = chaveDia(dt.getTime()); return { k, wd: WD[dt.getDay()], ml: AGUA.dias[k]||0, meta: metaAguaDe(k) }; });
+  const barras = dias.map(x=>`<span class="ag-c${x.ml>=x.meta?' ok':''}"><small class="ag-l">${x.ml?litros(x.ml):''}</small><span class="ag-t"><i style="height:${Math.min(100, Math.round(x.ml/x.meta*100))}%"></i></span><small>${x.wd}</small></span>`).join('');
+  const auto = metaAgua({ peso, manual:null, treinoHoje:false });
+  openSheet(`<div id="ag-sheet"><h2>Água</h2>
+    <p class="ag-big"><b>${litros(ml)}</b> de ${litros(meta)} L hoje</p>
+    <div class="ag-bts big">${[150,250,350,500,750].map(v=>`<button class="chipbtn" data-a="agua+" data-ml="${v}">+${v} ml</button>`).join('')}<button class="chipbtn ghost" data-a="agua-undo">↩ Desfazer</button></div>
+    <p class="lbl" style="margin-top:16px">Últimos 7 dias <small class="ag-leg">(barra cheia = meta batida)</small></p><div class="ag-hist" aria-label="Água nos últimos 7 dias">${barras}</div>
+    <p class="lbl" style="margin-top:16px">Meta diária</p>
+    <p class="note" style="margin-top:0">${peso ? `Automática: 35 ml por kg (${fmtN(peso)} kg) = <b>${litros(auto)} L</b>, mais 0,5 L nos dias de treino.` : 'Automática: 2,5 L por dia, mais 0,5 L nos dias de treino. Registre seu peso para a meta ficar sob medida (35 ml por kg).'}</p>
+    <div class="ag-mrow"><label class="lbl-in"><span>Meta própria (litros)</span><input class="inp" id="ag-meta" inputmode="decimal" placeholder="automática" value="${AGUA.manual?fmtN(AGUA.manual/1000,1):''}"></label>
+    <button class="btn sm" data-a="agua-meta">Salvar</button></div>
+    <p class="note">Deixe em branco para usar a meta automática. Se você tem alguma orientação médica sobre líquidos, use a meta que seu médico passou.</p>
+    <div class="btns"><button class="btn ghost" data-a="close">Fechar</button></div></div>`);
+}
+async function salvarMetaAguaSheet(){
+  const v = num(($('#ag-meta')||{}).value);
+  const ml = v ? Math.round(v*1000) : null;
+  if(ml && (ml<500 || ml>8000)){ toast('Use uma meta entre 0,5 e 8 litros.', true); return; }
+  try{ await D.salvarMetaAgua(UID, ml); AGUA.manual = ml; guardarCache(); toast(ml ? 'Meta de água: '+litros(ml)+' L por dia.' : 'Meta automática ativada.'); aguaSheet(); if(S.view==='hoje') atualizarAgua(); }
+  catch(e){ toast('Não consegui salvar agora. Confira a internet.', true); }
+}
+
+/* ----- 8. Temas ----- */
+function temasSheet(){
+  const nv = nivel(pontos());
+  const cards = TEMAS.map(t=>{ const livre = nv.i >= t.nivel, on = TEMA===t.id;
+    return `<button class="tema${on?' on':''}${livre?'':' lock'}" data-a="tema" data-t="${t.id}" ${livre?'':'aria-disabled="true"'} aria-pressed="${on}">
+      <span class="tm-sw" style="background:linear-gradient(135deg,${t.cor[0]},${t.cor[1]})">${livre?(on?'✓':''):'🔒'}</span>
+      <b>${esc(t.nome)}</b><small>${livre ? (on?'em uso':'liberado') : 'nível '+esc(NIVEIS[t.nivel][1])}</small></button>`; }).join('');
+  openSheet(`<h2>Temas</h2><p>Cada nível novo libera um tema de cores para o app. Você está no nível <b>${esc(nv.nome)}</b>.</p>
+    <div class="temas">${cards}</div><div class="btns" style="margin-top:14px"><button class="btn ghost" data-a="close">Fechar</button></div>`);
+}
+async function escolherTema(id){
+  const t = TEMAS.find(x=>x.id===id); if(!t) return;
+  const nv = nivel(pontos());
+  if(nv.i < t.nivel){ toast('Libera no nível '+NIVEIS[t.nivel][1]+'. Continue treinando!'); return; }
+  TEMA = t.id; aplicarTema(TEMA); LS.set('mt.tema.'+UID, TEMA); guardarCache();
+  temasSheet();
+  try{ await D.salvarTema(UID, TEMA); }catch(e){}
 }
 
 /* ----- Grupo da família ----- */
@@ -703,6 +999,7 @@ async function notifSheet(){
     <p class="lbl" style="margin-top:18px">O que avisar</p>
     ${ck('nt-grupo', NOTIF.grupo!==false, 'Quando alguém do grupo terminar o treino')}
     ${ck('nt-reacoes', NOTIF.reacoes!==false, 'Quando reagirem ao meu treino')}
+    ${ck('nt-resumo', NOTIF.resumo!==false, 'Resumo da semana no domingo à noite')}
     ${ck('nt-lem', !!LEM_HORA && NOTIF.lembrete!==false, 'Lembrete nos dias de treino')}
     <label class="lbl-in nt-hora"><span>Horário do lembrete</span><input class="inp" id="nt-hora" type="time" value="${esc(LEM_HORA || LS.get('mt.lembrete', {h:'18:00'}).h || '18:00')}"></label>
     <p class="note">O lembrete chega só nos dias que têm treino na ficha, e não chega se você já treinou. Vale para todos os seus aparelhos.</p>
@@ -742,7 +1039,7 @@ async function salvarNotif(){
   const v = id => { const el = $('#'+id); return el ? el.checked : true; };
   const hora = ($('#nt-hora') && $('#nt-hora').value) || '';
   const lem = v('nt-lem');
-  const notif = { grupo: v('nt-grupo'), reacoes: v('nt-reacoes'), lembrete: lem };
+  const notif = { grupo: v('nt-grupo'), reacoes: v('nt-reacoes'), lembrete: lem, resumo: v('nt-resumo') };
   try{
     await D.salvarPrefsNotif(UID, notif, lem ? hora : null);
     NOTIF = notif; LEM_HORA = lem ? hora : '';
@@ -895,7 +1192,7 @@ async function carregarGrupo(){
     S.grupo = await D.meuGrupo(UID);
     S.grupoM = S.grupo ? await D.resumoGrupo(S.grupo.id) : null;
     S.reacoes = S.grupo ? await D.listarReacoes(chaveDia(startOfWeek(Date.now()))).catch(()=>[]) : [];
-    avisarReacoesNovas();
+    avisarReacoesNovas(); verificarMissoes(false);
     S.grupoErr = false; LS.set(kGrupo(), {g:S.grupo, m:S.grupoM});
     if(S.grupo) iniciarVivo(); else pararVivo();
   }catch(e){
@@ -985,7 +1282,7 @@ async function reagir(btn){
   try{
     if(meu){ await D.desreagir(meu.id); S.reacoes = S.reacoes.filter(r=>r.id!==meu.id); }
     else { const r = await D.reagir(to, dia, emoji); S.reacoes = S.reacoes.concat([r]); }
-    render();
+    render(); verificarMissoes();
   }catch(e){ btn.disabled = false; toast('Não consegui mandar agora. Confira a internet.', true); }
 }
 function avisarReacoesNovas(){
@@ -1030,6 +1327,7 @@ function salvarCardio(){
   const r = registrarSessao(s);
   closeSheet(true); go('hoje');
   abrirCompartilhar('semana', s, 'Cardio salvo! '+c.min+' min de '+tipo.toLowerCase()+'.'+r.extra, r.selo);
+  verificarMissoes();
   enviarPendentes();
 }
 
@@ -1577,7 +1875,7 @@ function vEvolucao(){
     <div class="seg four" role="tablist" aria-label="Seções da evolução">${tabs}</div>${body}`;
 }
 function evoConquistas(){
-  const C = minhasConquistas(), nv = nivel(S.sessions.length), sem = semanasAtivas(S.sessions.map(s=>chaveDia(s.start)));
+  const C = minhasConquistas(), nv = nivel(pontos()), sem = semanasAtivas(S.sessions.map(s=>chaveDia(s.start)));
   const feitas = C.filter(c=>c.at).sort((a,b)=>b.at-a.at), falta = C.filter(c=>!c.at).sort((a,b)=>(b.prog[0]/b.prog[1])-(a.prog[0]/a.prog[1]));
   const prog = c=> c.tipo==='vol' ? fmtN(c.prog[0]/1000,1)+' de '+fmtN(c.prog[1]/1000,0)+' t' : c.prog[0]+' de '+c.prog[1];
   const badge = c=>`<${c.at?`button data-a="share-cq" data-id="${esc(c.id)}"`:'div'} class="badge${c.at?' on':''}"><span class="b-ico" aria-hidden="true">${c.ico}</span><b>${esc(c.nome)}</b>
@@ -1588,9 +1886,10 @@ function evoConquistas(){
       <div class="lvl-big"><span class="lv-n" aria-hidden="true">${nv.i+1}</span><div><small>Nível</small><b>${esc(nv.nome)}</b></div>
         <span class="lvl-fire${sem?'':' off'}"><span aria-hidden="true">🔥</span><b>${sem}</b><small>${sem===1?'semana ativa':'semanas ativas'}</small></span></div>
       <span class="bar"><i style="width:${Math.round(nv.pct*100)}%"></i></span>
-      <p class="note">${nv.prox ? `${nv.n} ${nv.n===1?'treino':'treinos'} · faltam <b>${nv.prox.n-nv.n}</b> para o nível <b>${esc(nv.prox.nome)}</b>` : `${nv.n} treinos · nível máximo!`}</p>
-      <div class="steps" aria-label="Níveis por número de treinos">${degraus}</div>
-      <p class="note">Semana ativa = 3 ou mais dias de treino. A sequência continua enquanto nenhuma semana fechar abaixo disso.</p>
+      <p class="note">${nv.prox ? `${nv.n} ${nv.n===1?'ponto':'pontos'} · faltam <b>${nv.prox.n-nv.n}</b> para o nível <b>${esc(nv.prox.nome)}</b>` : `${nv.n} pontos · nível máximo!`}</p>
+      <div class="steps" aria-label="Níveis por pontos">${degraus}</div>
+      <p class="note">Cada treino vale 1 ponto e cada missão da semana cumprida vale mais 1. Semana ativa = 3 ou mais dias de treino.</p>
+      <button class="btn sm" data-a="temas" style="margin-top:10px">🎨 Temas do app</button>
       ${nv.i>0?`<button class="btn sm" data-a="share-nv" style="margin-top:12px">${ICON.share} Compartilhar meu nível</button>`:''}</section>
     <h2 class="h2" style="margin:18px 2px 10px">Conquistadas · ${feitas.length} de ${C.length}</h2>
     ${feitas.length ? `<div class="badges">${feitas.map(badge).join('')}</div>` : '<div class="empty"><b>Nenhuma ainda</b>Finalize seu primeiro treino para ganhar a primeira.</div>'}
@@ -1792,6 +2091,14 @@ function scheduleBeeps(sec){
   cancelBeeps(); if(!S.sound || !AC) return;
   try{
     const t0 = AC.currentTime + Math.max(0, sec);
+    // contagem regressiva: 3 toques curtos antes do fim, depois o sinal de "pode ir"
+    [[-3,520,0.09],[-2,520,0.09],[-1,620,0.09]].forEach(([o,f,d])=>{
+      if(sec + o < 0.3) return;
+      const osc = AC.createOscillator(), g = AC.createGain();
+      osc.type='sine'; osc.frequency.value=f;
+      g.gain.setValueAtTime(0.0001, t0+o); g.gain.exponentialRampToValueAtTime(0.18, t0+o+0.015); g.gain.exponentialRampToValueAtTime(0.0001, t0+o+d);
+      osc.connect(g); g.connect(AC.destination); osc.start(t0+o); osc.stop(t0+o+d+0.02); beeps.push(osc);
+    });
     [[0,880],[0.22,880],[0.44,1320]].forEach(([o,f])=>{
       const osc = AC.createOscillator(), g = AC.createGain();
       osc.type='sine'; osc.frequency.value=f;
@@ -1821,11 +2128,19 @@ function tickRest(){
     $('#rest-lbl').textContent = 'Descanso concluído · próxima série';
     $('#rest-time').textContent = '+'+clock(-left);
     $('#rest-fill').style.width = '0%';
+    { const arc = $('#rest-arc'); if(arc) arc.style.strokeDashoffset = '100'; }
+    el.classList.remove('final');
     return;
   }
-  $('#rest-lbl').textContent = 'Descanso · '+r.label;
-  $('#rest-time').textContent = clock(Math.ceil(left));
+  $('#rest-lbl').textContent = r.label;
+  const seg = Math.ceil(left);
+  $('#rest-time').textContent = clock(seg);
   $('#rest-fill').style.width = (left/r.total*100)+'%';
+  const arc = $('#rest-arc'); if(arc) arc.style.strokeDashoffset = String(100 - left/r.total*100);
+  // últimos 3 segundos: número pulsando e vibração curta a cada segundo
+  const fim = seg <= 3;
+  el.classList.toggle('final', fim);
+  if(fim && r.ult !== seg){ r.ult = seg; vibrar(seg===1 ? 80 : 40); const t = $('#rest-time'); t.classList.remove('pulso'); void t.offsetWidth; t.classList.add('pulso'); }
 }
 function tickClock(){
   if(!S.draft) return;
@@ -1874,6 +2189,7 @@ function toggleSet(i, si){
       });
     });
     st.done = true; d.lastSetAt = Date.now();
+    try{ checarRecorde(i, si); }catch(err){ console.error('recorde', err); }
   } else st.done = false;
   touchDraft();
   const row = $('#set-'+i+'-'+si);
@@ -1969,11 +2285,11 @@ function finishPrompt(){
 // grava um treino ou cardio (fila local + envio) e diz o que foi conquistado
 function registrarSessao(s){
   const antes = new Set(minhasConquistas().filter(c=>c.at).map(c=>c.id));
-  const nv0 = nivel(S.sessions.filter(x=>x.id!==s.id).length);
+  const nv0 = nivel(S.sessions.filter(x=>x.id!==s.id).length + MISSOES.length);
   S.sessions = [s].concat(S.sessions.filter(x=>x.id!==s.id)).sort((a,b)=>b.start-a.start);
   S.pending = S.pending.filter(p=>p.id!==s.id).concat([s]); LS.set(kPending(), S.pending);
   const novas = minhasConquistas().filter(c=>c.at && !antes.has(c.id));
-  const nv1 = nivel(S.sessions.length);
+  const nv1 = nivel(pontos());
   const extra = (nv1.i>nv0.i ? ' Subiu para o nível '+nv1.nome+'!' : '') + (novas.length ? ' Nova conquista: '+novas.map(c=>c.ico+' '+c.nome).join(', ')+'.' : '');
   const selo = novas.length ? novas[novas.length-1] : (nv1.i>nv0.i ? conquistaNivel(nv1) : null);
   return { extra, selo };
@@ -1989,10 +2305,10 @@ async function saveSession(){
   const L = s.letter, ord = FICHA ? FICHA.order : [L];
   const nx = ord[(ord.indexOf(L)+1)%ord.length];
   go('hoje');
-  const nv0 = nivel(S.sessions.length-1), nv1 = nivel(S.sessions.length);
+  const nv0 = nivel(pontos()-1), nv1 = nivel(pontos());
   const extra = (nv1.i>nv0.i ? ' Subiu para o nível '+nv1.nome+'!' : '') + (novas.length ? ' Nova conquista: '+novas.map(c=>c.ico+' '+c.nome).join(', ')+'.' : '');
-  abrirCompartilhar('semana', s, 'Treino '+L+' salvo! Próximo: Treino '+nx+'.'+(prs.length?' '+prs.length+(prs.length>1?' recordes':' recorde')+' hoje.':'')+extra,
-    novas.length ? novas[novas.length-1] : (nv1.i>nv0.i ? conquistaNivel(nv1) : null));
+  resumoTreinoSheet(s, prs, ' Próximo: Treino '+nx+'.'+extra, novas.length ? novas[novas.length-1] : (nv1.i>nv0.i ? conquistaNivel(nv1) : null));
+  verificarMissoes();
   await enviarPendentes();
 }
 async function enviarPendentes(){
@@ -2067,7 +2383,7 @@ async function saveBody(){
   try{
     await D.salvarPeso(UID, d, kg);
     S.body = S.body.filter(e=>e.d!==d).concat([{d, kg}]).sort((a,b)=>a.d<b.d?-1:1);
-    render(); toast('Peso registrado: '+fmtN(kg)+' kg.');
+    render(); toast('Peso registrado: '+fmtN(kg)+' kg.'); verificarMissoes();
   }catch(e){ toast('Não consegui salvar o peso. Confira a conexão.', true); }
 }
 
@@ -2264,6 +2580,7 @@ function perfilSheet(){
     <div class="btns" style="margin-top:16px">
       <button class="btn" data-a="grupo">${ICON.users} Grupo da família${S.grupo?' · '+esc(S.grupo.nome):''}</button>
       <button class="btn" data-a="notif">${ICON.bell} Notificações</button>
+      <button class="btn" data-a="temas">🎨 Temas do app</button>
       ${!estaInstalado()?`<button class="btn" data-a="instalar">📲 Instalar o app na tela inicial</button>`:''}
       ${ADMIN?`<button class="btn adm" data-a="go-close" data-v="admin">${ICON.shield} Área do admin</button>`:''}
       ${EDITOR?`<button class="btn" data-a="videos">${ICON.play} Vídeos dos exercícios</button>`:''}
@@ -2340,7 +2657,7 @@ function cardRetro(){
 }
 function conquistaNivel(nv){ return { nivel:true, ico:'⭐', nome:'Nível '+nv.nome, desc: nv.n+' treinos'+(nv.prox?' · próximo: '+nv.prox.nome+' ('+nv.prox.n+')':''), at: Date.now(), nv }; }
 function dadosConquista(c){
-  const C = minhasConquistas(), nv = c.nv || nivel(S.sessions.length);
+  const C = minhasConquistas(), nv = c.nv || nivel(pontos());
   return { titulo: c.nome, desc: c.desc, ico: c.ico, nivel: !!c.nivel, nivelNum: nv.i+1, nivelNome: nv.nome, data: c.at || Date.now(),
     feitas: C.filter(x=>x.at).length, total: C.length, treinos: S.sessions.length, nome: NOME || EMAIL.split('@')[0], insta: INSTA };
 }
@@ -2437,6 +2754,15 @@ document.addEventListener('click', async e=>{
     case 'tecnica': tecnicaSheet(t.dataset.t); break;
     case 'vivo': vivoSheet(); break;
     case 'notif': closeSheet(true); notifSheet(); break;
+    case 'seq': closeSheet(true); seqSheet(); break;
+    case 'missoes': closeSheet(true); missoesSheet(); break;
+    case 'agua': aguaSheet(); break;
+    case 'agua+': addAgua(+t.dataset.ml); break;
+    case 'agua-undo': desfazerAgua(); break;
+    case 'agua-meta': salvarMetaAguaSheet(); break;
+    case 'temas': closeSheet(true); temasSheet(); break;
+    case 'tema': escolherTema(t.dataset.t); break;
+    case 'rs-share': if(S.rsCard){ const r = S.rsCard; abrirCompartilhar('semana', r.s, r.titulo, r.selo); } break;
     case 'notif-x': LS.set('mt.notif.ate', Date.now()+21*864e5); render(); break;
     case 'nt-on': ativarNotif(); break;
     case 'nt-off': desativarNotif(); break;
@@ -2540,7 +2866,7 @@ document.addEventListener('click', async e=>{
     case 'share-ad': abrirCompartilhar('antesdepois', null, 'Antes e depois'); break;
     case 'share-retro': CARD.ano = anoRetro(); abrirCompartilhar('retro', null, 'Retrospectiva '+CARD.ano); break;
     case 'retro-x': LS.set('mt.retro.'+anoRetro(), true); { const c = t.closest('.aviso'); if(c) c.remove(); } break;
-    case 'share-nv': { const c = conquistaNivel(nivel(S.sessions.length)); abrirCompartilhar('conquista', null, 'Nível '+c.nv.nome, c); break; }
+    case 'share-nv': { const c = conquistaNivel(nivel(pontos())); abrirCompartilhar('conquista', null, 'Nível '+c.nv.nome, c); break; }
     case 'p-save': {
       const n = $('#p-nome').value.trim(); const ig = $('#p-insta').value.trim().replace(/^@+/, '').replace(/\s+/g,'');
       if(!n){ toast('Digite seu nome.', true); break; }
@@ -2636,6 +2962,9 @@ async function carregar(silencioso){
   S.offline = doAparelho;
   try{
     NOME = d.nome || NOME; AVATAR = d.avatar; INSTA = d.instagram; AVATAR_IMG = null; METAS = d.metas || METAS; NOTIF = d.notif || NOTIF; LEM_HORA = d.lembreteHora || '';
+    MISSOES = Array.isArray(d.missoes) ? d.missoes : [];
+    AGUA = { dias: Object.assign({}, d.agua || {}, LS.get('mt.agua.pend.'+UID, {})), manual: d.aguaMeta || null };
+    TEMA = d.tema || LS.get('mt.tema.'+UID, 'neon') || 'neon';
     FICHAS = d.fichas; definirFicha();
     CATALOGO = d.catalogo || []; prepararCatalogo(CATALOGO); autoCache.clear();
     VIDEOS = {}; (d.videos||[]).forEach(v=>{ VIDEOS[v.chave] = {nome:v.nome, video:v.video}; }); EDITOR = !!(d.editor || d.admin); ADMIN = !!d.admin; AVISOS = d.avisos || [];
@@ -2652,12 +2981,26 @@ async function carregar(silencioso){
     if(doAparelho){ S.sync = 'offline'; }
     if(!silencioso || S.view!=='sessao') render(); else renderStatus();
     if(doAparelho){ if(!silencioso) toast('Sem internet: usando os dados guardados no aparelho. O treino é salvo quando a conexão voltar.'); }
-    else { S.sync = 'ok'; enviarPendentes(); sincronizarAparelho(); }
+    else { S.sync = 'ok'; enviarPendentes(); sincronizarAparelho(); salvarAguaDepois(); if(LS.get('mt.missoes.pend.'+UID, false)) D.salvarMissoes(UID, MISSOES).then(()=>LS.set('mt.missoes.pend.'+UID, false)).catch(()=>{}); }
+    // tema: só vale se o nível já liberou
+    { const t = TEMAS.find(x=>x.id===TEMA); aplicarTema(t && nivel(pontos()).i >= t.nivel ? TEMA : 'neon'); }
+    verificarMissoes(false);
     carregarGrupo();
+    abrirPeloLink();
   }catch(e){
     S.loadErr = 'Não consegui abrir seus dados. Tente de novo.';
     S.view = 'carregando'; render();
   }
+}
+// Links das notificações: ?card=semana abre o card da semana
+function abrirPeloLink(){
+  try{
+    const q = new URLSearchParams(location.search);
+    if(!q.has('card') && !q.has('v')) return;
+    const card = q.get('card');
+    history.replaceState(null, '', location.pathname);
+    if(card==='semana' && FICHA && !S.draft) setTimeout(()=>abrirCompartilhar('semana', null, 'Sua semana'), 400);
+  }catch(e){}
 }
 // Mantém a cópia do aparelho em dia (para abrir sem internet)
 function guardarCache(){
@@ -2665,6 +3008,7 @@ function guardarCache(){
   const c = LS.get(kDados(), null); if(!c) return;
   const pend = new Set(S.pending.map(p=>p.id));
   Object.assign(c, { treinos:S.sessions.filter(x=>!pend.has(x.id)), peso:S.body, avaliacoes:S.measures, fotos:S.photos, fichas:FICHAS, nome:NOME, avatar:AVATAR, instagram:INSTA,
+    missoes:MISSOES, tema:TEMA, agua:AGUA.dias, aguaMeta:AGUA.manual,
     videos:Object.entries(VIDEOS).map(([chave,v])=>({chave, nome:v.nome, video:v.video})) });
   LS.set(kDados(), c);
 }

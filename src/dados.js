@@ -35,7 +35,7 @@ function linhaParaFicha(r){
 // ---------- Carga inicial ----------
 export async function carregarTudo(uid){
   const [perfil, fichas, treinos, peso, aval, fotos, rascunho, videos, editor, admin, avisos, catalogo] = await Promise.all([
-    sb.from('profiles').select('nome,avatar_path,instagram,meta_peso,meta_gordura,meta_data').eq('id', uid).maybeSingle().then(ok),
+    sb.from('profiles').select('nome,avatar_path,instagram,meta_peso,meta_gordura,meta_data,notif,lembrete_hora').eq('id', uid).maybeSingle().then(ok),
     sb.from('plans').select('*').order('created_at', { ascending: true }).then(ok),
     sb.from('sessions').select('*').order('started_at', { ascending: false }).limit(1000).then(ok),
     sb.from('body_weights').select('d,kg').order('d', { ascending: true }).then(ok),
@@ -52,6 +52,8 @@ export async function carregarTudo(uid){
     nome: perfil && perfil.nome || '',
     avatar: perfil && perfil.avatar_path || '',
     instagram: perfil && perfil.instagram || '',
+    notif: Object.assign({ grupo: true, reacoes: true, lembrete: true }, perfil && perfil.notif || {}),
+    lembreteHora: perfil && perfil.lembrete_hora ? String(perfil.lembrete_hora).slice(0,5) : '',
     metas: { peso: perfil && perfil.meta_peso != null ? Number(perfil.meta_peso) : null, gordura: perfil && perfil.meta_gordura != null ? Number(perfil.meta_gordura) : null, data: perfil && perfil.meta_data || null },
     fichas: (fichas || []).map(linhaParaFicha),
     treinos: (treinos || []).map(linhaParaTreino),
@@ -191,6 +193,18 @@ export async function resumoGrupo(id){
   const { data, error } = await sb.rpc('grupo_resumo', { p_grupo: id });
   if(error) throw erroRpc(error);
   return (data || []).map(m => ({ uid: m.user_id, nome: m.nome || '', avatar: m.avatar_path || '', insta: m.instagram || '', dias: (m.dias || []).map(String) }));
+}
+
+// ---------- Notificações (Web Push) ----------
+export async function chaveVapid(){ const { data, error } = await sb.rpc('vapid_publica'); if(error) throw error; return data || ''; }
+export async function salvarAparelho(uid, sub){
+  ok(await sb.from('push_subs').upsert({ endpoint: sub.endpoint, user_id: uid, p256dh: sub.keys.p256dh, auth: sub.keys.auth, ua: navigator.userAgent.slice(0, 200) }, { onConflict: 'endpoint' }));
+}
+export async function apagarAparelho(endpoint){ if(endpoint) ok(await sb.from('push_subs').delete().eq('endpoint', endpoint)); }
+export async function testeNotif(){ const { error } = await sb.functions.invoke('notificar', { body: { tipo: 'teste' } }); if(error) throw error; }
+export async function aparelhosAtivos(uid){ const { count } = await sb.from('push_subs').select('endpoint', { count: 'exact', head: true }).eq('user_id', uid); return count || 0; }
+export async function salvarPrefsNotif(uid, notif, hora){
+  ok(await sb.from('profiles').update({ notif, lembrete_hora: hora || null, lembrete_ultimo: null }).eq('id', uid));
 }
 
 // Treino ao vivo do grupo: quem está treinando agora e quantas séries de cada exercício já fez (sem cargas)

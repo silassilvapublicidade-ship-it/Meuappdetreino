@@ -12,6 +12,7 @@ import {
 import { calcular as calcConquistas, nivel, semanasAtivas, chaveDia, NIVEIS } from './conquistas.js';
 import { prepararCatalogo, acharNoCatalogo, GRUPOS } from './catalogo.js';
 import { tecnicasDe, tecnica, TECNICAS } from './tecnicas.js';
+import { suportaPush, ehIOS, instalado as pwaInstalado, permissao, assinaturaAtual, assinar, cancelar as cancelarPush } from './push.js';
 import * as D from './dados.js';
 import { desenharSemana, desenharMes, desenharConquista, desenharAntesDepois, desenharRetrospectiva } from './cartao.js';
 
@@ -73,6 +74,7 @@ let EDITOR = false;       // só o editor (Silas) cadastra os links de vídeo
 let ADMIN = false;        // acesso à área do admin
 let AVISOS = [];          // avisos do admin para todos
 let METAS = { peso:null, gordura:null, data:null };
+let NOTIF = { grupo:true, reacoes:true, lembrete:true }, LEM_HORA = '';
 const VERSAO = typeof __VERSAO__ !== 'undefined' ? __VERSAO__ : 'dev';
 const S = {
   view:'carregando', auth:'entrar', authMsg:'', authErr:'',
@@ -644,6 +646,7 @@ function vHoje(){
     ${avisosHoje()}
     ${cardRetro()}
     ${cardInstalar()}
+    ${cardNotif()}
     ${cardFichaVencendo()}
     ${hero}
     <p class="todayline">${today}</p>
@@ -668,6 +671,84 @@ function nivelStrip(){
 function arroba(ig){ return ig ? `<span class="ig">@${esc(ig)}</span>` : ''; }
 function miniAvatar(path, nome, cls){ return `<span class="avatar ${cls||'xs'}" aria-hidden="true">${path?`<img data-path="${esc(path)}" alt="">`:esc(iniciais(nome))}</span>`; }
 function iniciais(n){ return (n||'?').trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase(); }
+/* ----- Notificações no celular ----- */
+function estadoPush(sub){
+  if(!suportaPush()) return ehIOS() && !pwaInstalado() ? 'ios' : 'sem';
+  const p = permissao();
+  if(p==='denied') return 'negado';
+  return sub && p==='granted' ? 'on' : 'off';
+}
+async function sincronizarAparelho(){
+  try{ if(permissao()!=='granted') return; const s = await assinaturaAtual(); if(s) await D.salvarAparelho(UID, s.toJSON()); }catch(e){}
+}
+function cardNotif(){
+  if(!S.grupo || !suportaPush() || permissao()!=='default' || LS.get('mt.notif.ate', 0) > Date.now()) return '';
+  return `<div class="aviso n-info inst" role="status"><span class="av-i" aria-hidden="true">🔔</span><p><b>Ative as notificações.</b> Saiba quando alguém da família terminar o treino, receber reações e lembrete nos dias de treino.<br><button class="btn sm primary" data-a="notif" style="margin-top:8px;width:auto">Ativar</button></p><button class="x" data-a="notif-x" aria-label="Agora não">×</button></div>`;
+}
+async function notifSheet(){
+  const sub = suportaPush() ? await assinaturaAtual() : null;
+  const st = estadoPush(sub);
+  const topo = {
+    on: `<div class="nt-st on">✅ <span><b>Ativadas neste aparelho.</b> Os avisos chegam mesmo com o app fechado.</span></div>
+      <div class="btns two"><button class="btn sm" data-a="nt-teste">Enviar teste</button><button class="btn sm ghost" data-a="nt-off">Desativar aqui</button></div>`,
+    off: `<button class="btn primary" data-a="nt-on">${ICON.bell} Ativar notificações neste aparelho</button>
+      <p class="note">O celular vai perguntar se pode mostrar notificações. Toque em <b>Permitir</b>.</p>`,
+    negado: `<div class="nt-st">🔕 <span><b>As notificações estão bloqueadas para o app.</b> Libere nas configurações do celular (Notificações › Meus Treinos) ou no cadeado ao lado do endereço, no navegador, e volte aqui.</span></div>`,
+    ios: `<div class="nt-st">📲 <span><b>No iPhone, primeiro instale o app.</b> As notificações só funcionam pelo app na tela de início. Depois abra o app por lá e volte aqui.</span></div>
+      <button class="btn" data-a="instalar">Como instalar</button>`,
+    sem: `<div class="nt-st">ℹ️ <span>Este navegador não aceita notificações. No Android, abra o app pelo <b>Chrome</b>. No iPhone, pelo app instalado na tela de início.</span></div>`
+  }[st];
+  const ck = (id, on, txt) => `<label class="nt-ck"><input type="checkbox" id="${id}"${on?' checked':''}><span>${txt}</span></label>`;
+  openSheet(`<h2>Notificações</h2>${topo}
+    <p class="lbl" style="margin-top:18px">O que avisar</p>
+    ${ck('nt-grupo', NOTIF.grupo!==false, 'Quando alguém do grupo terminar o treino')}
+    ${ck('nt-reacoes', NOTIF.reacoes!==false, 'Quando reagirem ao meu treino')}
+    ${ck('nt-lem', !!LEM_HORA && NOTIF.lembrete!==false, 'Lembrete nos dias de treino')}
+    <label class="lbl-in nt-hora"><span>Horário do lembrete</span><input class="inp" id="nt-hora" type="time" value="${esc(LEM_HORA || LS.get('mt.lembrete', {h:'18:00'}).h || '18:00')}"></label>
+    <p class="note">O lembrete chega só nos dias que têm treino na ficha, e não chega se você já treinou. Vale para todos os seus aparelhos.</p>
+    <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="nt-save">Salvar</button><button class="btn ghost" data-a="close">Fechar</button></div>`);
+}
+function erroPush(e){
+  const c = e && e.message;
+  return c==='negado' ? 'Permissão negada. Libere as notificações nas configurações do celular.' :
+    c==='sem_resposta' ? 'Sem permissão ainda. Toque em Ativar e depois em Permitir.' :
+    c==='sem_sw' ? 'Abra o app pelo endereço principal (não em aba anônima) e tente de novo.' :
+    /incognito|anônim|AbortError|NotAllowed/i.test(String(c)+' '+(e&&e.name)) ? 'Este navegador não deixou ativar. Abra o app instalado (ou no Chrome, fora da aba anônima) e tente de novo.' :
+    'Não consegui ativar agora. Confira a internet e tente de novo.';
+}
+async function ativarNotif(){
+  if(S.busy) return; S.busy = true;
+  try{
+    const vapid = await D.chaveVapid();
+    if(!vapid) throw new Error('sem_chave');
+    const sub = await assinar(vapid);
+    await D.salvarAparelho(UID, sub);
+    await enviarTesteNotif(true);
+    toast('Notificações ativadas neste aparelho.');
+  }catch(e){ toast(erroPush(e), true); }
+  S.busy = false;
+  notifSheet();
+}
+async function desativarNotif(){
+  try{ const ep = await cancelarPush(); await D.apagarAparelho(ep); toast('Notificações desativadas neste aparelho.'); }
+  catch(e){ toast('Não consegui desativar agora.', true); }
+  notifSheet();
+}
+async function enviarTesteNotif(silencioso){
+  try{ await D.testeNotif(); if(!silencioso) toast('Teste enviado. Deve chegar em alguns segundos.'); }
+  catch(e){ if(!silencioso) toast('Não consegui enviar o teste agora.', true); }
+}
+async function salvarNotif(){
+  const v = id => { const el = $('#'+id); return el ? el.checked : true; };
+  const hora = ($('#nt-hora') && $('#nt-hora').value) || '';
+  const lem = v('nt-lem');
+  const notif = { grupo: v('nt-grupo'), reacoes: v('nt-reacoes'), lembrete: lem };
+  try{
+    await D.salvarPrefsNotif(UID, notif, lem ? hora : null);
+    NOTIF = notif; LEM_HORA = lem ? hora : '';
+    closeSheet(); toast(lem && hora ? `Salvo. Lembrete às ${hora} nos dias de treino.` : 'Preferências salvas.');
+  }catch(e){ toast('Não consegui salvar agora. Confira a internet.', true); }
+}
 /* ----- Treino em grupo ao vivo ----- */
 // A cada poucos segundos (só com o app aberto) busca quem do grupo está treinando e quantas
 // séries de cada exercício já fez. Mostra no topo do treino, em cada exercício e no card do grupo.
@@ -834,7 +915,7 @@ async function convidarGrupo(){
 function lembretesSheet(){
   const cfg = LS.get('mt.lembrete', {h:'18:00', antes:15});
   const dias = SEMANA.filter(d=>FICHA.W[FICHA.sched[d]]);
-  openSheet(`<h2>Lembretes de treino</h2><p>O app cria um evento que se repete toda semana em cada dia de treino. O calendário do celular avisa sozinho, mesmo com o app fechado.</p>
+  openSheet(`<h2>Lembretes de treino</h2>${suportaPush()||ehIOS()?`<button class="gcta" data-a="notif" style="margin-bottom:12px"><span class="ci">${ICON.bell}</span><span><b>Prefere notificação do app?</b><small>Aviso no celular na hora do treino, só nos dias de treino.</small></span><span class="chev" aria-hidden="true">›</span></button>`:''}<p>Ou pelo calendário: o app cria um evento que se repete toda semana em cada dia de treino. O calendário do celular avisa sozinho, mesmo com o app fechado.</p>
     <p class="note" style="margin-top:0">Dias: <b>${dias.map(d=>DIAS[d]).join(', ') || 'nenhum dia de treino na ficha'}</b></p>
     <div class="frow2 lem"><label class="lbl-in"><span>Horário do treino</span><input class="inp" id="lem-h" type="time" value="${esc(cfg.h)}"></label>
     <label class="lbl-in"><span>Avisar</span><select class="inp" id="lem-a">${[[0,'Na hora'],[15,'15 min antes'],[30,'30 min antes'],[60,'1 h antes']].map(([v,l])=>`<option value="${v}"${+cfg.antes===v?' selected':''}>${l}</option>`).join('')}</select></label></div>
@@ -2182,6 +2263,7 @@ function perfilSheet(){
     <button class="btn" data-a="p-save" style="margin-top:10px">Salvar perfil</button>
     <div class="btns" style="margin-top:16px">
       <button class="btn" data-a="grupo">${ICON.users} Grupo da família${S.grupo?' · '+esc(S.grupo.nome):''}</button>
+      <button class="btn" data-a="notif">${ICON.bell} Notificações</button>
       ${!estaInstalado()?`<button class="btn" data-a="instalar">📲 Instalar o app na tela inicial</button>`:''}
       ${ADMIN?`<button class="btn adm" data-a="go-close" data-v="admin">${ICON.shield} Área do admin</button>`:''}
       ${EDITOR?`<button class="btn" data-a="videos">${ICON.play} Vídeos dos exercícios</button>`:''}
@@ -2354,6 +2436,12 @@ document.addEventListener('click', async e=>{
     case 'addset': addSet(+t.dataset.ei); break;
     case 'tecnica': tecnicaSheet(t.dataset.t); break;
     case 'vivo': vivoSheet(); break;
+    case 'notif': closeSheet(true); notifSheet(); break;
+    case 'notif-x': LS.set('mt.notif.ate', Date.now()+21*864e5); render(); break;
+    case 'nt-on': ativarNotif(); break;
+    case 'nt-off': desativarNotif(); break;
+    case 'nt-teste': enviarTesteNotif(); break;
+    case 'nt-save': salvarNotif(); break;
     case 'swap': if(S.draft) swapSheet(+t.dataset.ei); break;
     case 'swap-go': { const v = $('#swap-n'); if(S.draft) swapEx(+t.dataset.ei, v ? v.value : ''); break; }
     case 'swap-undo': if(S.draft) undoSwap(+t.dataset.ei); break;
@@ -2547,7 +2635,7 @@ async function carregar(silencioso){
   }
   S.offline = doAparelho;
   try{
-    NOME = d.nome || NOME; AVATAR = d.avatar; INSTA = d.instagram; AVATAR_IMG = null; METAS = d.metas || METAS;
+    NOME = d.nome || NOME; AVATAR = d.avatar; INSTA = d.instagram; AVATAR_IMG = null; METAS = d.metas || METAS; NOTIF = d.notif || NOTIF; LEM_HORA = d.lembreteHora || '';
     FICHAS = d.fichas; definirFicha();
     CATALOGO = d.catalogo || []; prepararCatalogo(CATALOGO); autoCache.clear();
     VIDEOS = {}; (d.videos||[]).forEach(v=>{ VIDEOS[v.chave] = {nome:v.nome, video:v.video}; }); EDITOR = !!(d.editor || d.admin); ADMIN = !!d.admin; AVISOS = d.avisos || [];
@@ -2564,7 +2652,7 @@ async function carregar(silencioso){
     if(doAparelho){ S.sync = 'offline'; }
     if(!silencioso || S.view!=='sessao') render(); else renderStatus();
     if(doAparelho){ if(!silencioso) toast('Sem internet: usando os dados guardados no aparelho. O treino é salvo quando a conexão voltar.'); }
-    else { S.sync = 'ok'; enviarPendentes(); }
+    else { S.sync = 'ok'; enviarPendentes(); sincronizarAparelho(); }
     carregarGrupo();
   }catch(e){
     S.loadErr = 'Não consegui abrir seus dados. Tente de novo.';

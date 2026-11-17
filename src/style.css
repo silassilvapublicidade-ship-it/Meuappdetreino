@@ -607,3 +607,10 @@ button.badge{text-align:left;color:var(--ink);font:inherit;cursor:pointer}
 .vivo-ex li{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--muted)}
 .vivo-ex li.ok{color:var(--ink)} .vivo-ex li.ok b{color:var(--mint)}
 .vivo-ex li.meio{color:var(--ink)} .vivo-ex li.meio b{color:var(--cyan)}
+
+/* ----- Notificações ----- */
+.nt-st{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:14px;background:var(--panel-2);border:1px solid var(--line);line-height:1.45;margin-bottom:10px}
+.nt-st.on{border-color:rgba(67,227,173,.4)}
+.nt-ck{display:flex;gap:12px;align-items:center;padding:12px 2px;border-bottom:1px solid var(--line);cursor:pointer;font-weight:700}
+.nt-ck input{width:22px;height:22px;accent-color:var(--mint);flex:none}
+.nt-hora{margin-top:12px}

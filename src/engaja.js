@@ -81,7 +81,7 @@ export const TEMAS = [
   { id:'neon',    nome:'Neon',       nivel:0, cor:['#3cc9ff','#43e3ad'] },
   { id:'oceano',  nome:'Oceano',     nivel:1, cor:['#4f8dff','#38d6e8'] },
   { id:'fogo',    nome:'Fogo',       nivel:2, cor:['#ff7a3d','#ffc145'] },
-  { id:'violeta', nome:'Violeta',    nivel:3, cor:['#a77bff','#ff6bd5'] },
+  { id:'violeta', nome:'Cíntia',     nivel:3, cor:['#9333ea','#c084fc'] },
   { id:'floresta',nome:'Floresta',   nivel:4, cor:['#7bd88f','#d6f26b'] },
   { id:'ouro',    nome:'Ouro',       nivel:5, cor:['#ffcf5a','#f5e6b8'] },
   { id:'lenda',   nome:'Lenda',      nivel:6, cor:['#ff4d6d','#ffd166'] },

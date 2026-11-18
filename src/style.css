@@ -770,3 +770,6 @@ html[data-tema]{transition:none}
 .tt-st.ok{color:var(--mint)}
 .tt-b{grid-column:1/-1;display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-top:6px}
 .tt-b .btn{min-height:42px}
+.exec{color:var(--cyan)!important}
+.exec b{color:var(--ink);font-weight:800}
+.wcard .exec b,.tt-i .exec b,.tt-i small b{display:inline;font:inherit;font-weight:800;color:var(--ink);text-transform:none;letter-spacing:0;margin:0}

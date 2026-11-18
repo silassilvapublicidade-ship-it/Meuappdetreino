@@ -226,18 +226,27 @@ function nextLetter(){
   if(!last || FICHA.order.indexOf(last.letter)<0) return FICHA.order[0];
   return FICHA.order[(FICHA.order.indexOf(last.letter)+1)%FICHA.order.length];
 }
+// Quantas vezes cada treino da ficha foi feito e quando foi a última
+function execucoes(L){
+  const lista = sessionsDaFicha().filter(s=>s.letter===L);
+  return { n: lista.length, ultima: lista.length ? lista[0].start : null };
+}
+function dataCompleta(ts){ return new Date(ts).toLocaleDateString('pt-BR'); }
+function linhaExecucoes(L){
+  const x = execucoes(L);
+  return x.n ? `Executado <b>${x.n}</b> ${x.n===1?'vez':'vezes'}, última em <b>${dataCompleta(x.ultima)}</b>` : 'Ainda não executado nesta ficha';
+}
 // Escolher outro treino para hoje (ex.: academia lotada)
 function trocarTreinoSheet(){
   if(!FICHA) return;
   const feitos = feitosNaSemana(), sug = nextLetter(), hoje = new Date().getDay();
-  const ultimo = L => { const s = sessionsDaFicha().find(x=>x.letter===L); return s ? fmtDate(s.start) : null; };
   const diaDe = L => { const d = SEMANA.find(wd=>FICHA.sched[wd]===L); return d!=null ? DIAS[d] : null; };
   const itens = FICHA.order.map(L=>{
-    const W = FICHA.W[L], feito = feitos.has(L), u = ultimo(L), dia = diaDe(L);
+    const W = FICHA.W[L], feito = feitos.has(L), dia = diaDe(L);
     const status = feito ? '<span class="tt-st ok">✓ feito nesta semana</span>' : '<span class="tt-st">ainda não feito nesta semana</span>';
     return `<div class="tt${L===sug?' tt-sug':''}${feito?' feito':''}">
       <div class="tt-l neon" aria-hidden="true">${esc(L)}</div>
-      <div class="tt-i"><b>${esc(W.name)}</b><small>${esc(W.ex.length+' exercícios'+(dia?' · '+dia+(FICHA.sched[hoje]===L?' (hoje)':''):''))}${u?' · último: '+esc(u):''}</small>${status}</div>
+      <div class="tt-i"><b>${esc(W.name)}</b><small>${esc(W.ex.length+' exercícios'+(dia?' · '+dia+(FICHA.sched[hoje]===L?' (hoje)':''):''))}</small><small class="exec">${linhaExecucoes(L)}</small>${status}</div>
       <div class="tt-b"><button class="btn sm${L===sug?' primary':''}" data-a="start" data-l="${esc(L)}">${L===sug?'Começar (sugerido)':'Começar'}</button><button class="btn sm ghost" data-a="go-close" data-v="treino:${esc(L)}">Ver</button></div></div>`;
   }).join('');
   openSheet(`<h2>Escolher o treino de hoje</h2>
@@ -1845,13 +1854,13 @@ function vTreinos(){
     const naSemana = last && last.start >= startOfWeek(Date.now());
     return `<button class="wcard${naSemana?' feito':''}" data-a="go" data-v="treino:${L}">
       <span class="wl neon" aria-hidden="true">${L}</span>
-      <span><b>${esc(W.name)}</b><small>${esc(W.focus)}</small><small>${W.ex.length} exercícios · ${W.total} séries${last && !naSemana?' · feito '+fmtDate(last.start):''}</small>${naSemana?`<span class="chip ok wk">✓ Feito ${esc(fmtDate(last.start))}</span>`:''}</span>
+      <span><b>${esc(W.name)}</b><small>${esc(W.focus)}</small><small>${W.ex.length} exercícios · ${W.total} séries</small><small class="exec">${linhaExecucoes(L)}</small>${naSemana?`<span class="chip ok wk">✓ Feito nesta semana</span>`:''}</span>
       <span class="chev" aria-hidden="true">${naSemana?`<span class="ck big">${ICON.check}</span>`:'›'}</span></button>`;
   }).join('');
   return `<header class="top"><h1 class="h1">Treinos</h1><span class="top-r">${statusPill()}${avatarBtn()}</span></header>
     <section class="card"><div class="card-h"><h2 class="h2">${esc(FICHA.nome)}</h2><button class="link" data-a="f-edit">${ICON.edit} Editar</button></div>
     <ol class="sched-list">${rows}</ol>
-    <p class="note">Se faltar um dia, siga a sequência ${FICHA.order.join(' → ')}.${semanasDaFicha()!=null?` Ficha em uso há <b>${semanasDaFicha()} ${semanasDaFicha()===1?'semana':'semanas'}</b>.`:''}</p></section>
+    <p class="note">Se precisar trocar de treino num dia, o que ficou para trás é sugerido no próximo.${semanasDaFicha()!=null?` Ficha em uso há <b>${semanasDaFicha()} ${semanasDaFicha()===1?'semana':'semanas'}</b>.`:''}</p></section>
     <div class="wlist">${cards}</div>
     <div class="btns two" style="margin-top:14px"><button class="btn sm ghost" data-a="fichas">Trocar de ficha</button><button class="btn sm ghost" data-a="go" data-v="onboarding">+ Nova ficha</button></div>
     ${CATALOGO.length?`<button class="gcta" data-a="biblioteca" style="margin-top:12px"><span class="ci">${ICON.play}</span><span><b>Biblioteca de exercícios</b><small>${CATALOGO.length} vídeos de execução para consultar</small></span><span class="chev" aria-hidden="true">›</span></button>`:''}`;
@@ -1869,7 +1878,7 @@ function vTreino(L){
   return `<button class="back" data-a="go" data-v="treinos">${ICON.back} Treinos</button>
     <div class="whead"><span class="big-letter neon" aria-hidden="true">${L}</span>
       <div><div class="hero-name">${esc(W.name)}</div><div class="hero-focus">${esc(W.focus)}</div>
-      ${W.rest?`<div class="meta">Descanso geral ${esc(W.rest)}</div>`:''}</div></div>
+      ${W.rest?`<div class="meta">Descanso geral ${esc(W.rest)}</div>`:''}<div class="meta exec">${linhaExecucoes(L)}</div></div></div>
     <div class="btns" style="margin-top:14px"><button class="btn primary" data-a="start" data-l="${L}">${S.draft&&S.draft.letter===L?'Continuar':'Começar'} treino ${L}</button></div>
     ${blocoAquecimento(W)}
     <div class="exlist">${ex}</div>`;

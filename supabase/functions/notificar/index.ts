@@ -121,7 +121,7 @@ async function aviso(id: string) {
   const { data: a } = await sb.from("app_avisos").select("texto,nivel,ativo,created_by").eq("id", id).maybeSingle();
   if (!a || !a.ativo) return 0;
   const { data: subs } = await sb.from("push_subs").select("user_id");
-  const todos = [...new Set((subs || []).map((x) => x.user_id))].filter((u) => u !== a.created_by);
+  const todos = [...new Set((subs || []).map((x) => x.user_id))]; // inclusive quem publicou
   const titulo = a.nivel === "alerta" ? "⚠️ Atenção" : a.nivel === "festa" ? "🎉 Boa notícia" : "📣 Aviso do Meus Treinos";
   const texto = String(a.texto || "").trim();
   return enviar(await querem(todos, "avisos"), {

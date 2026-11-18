@@ -1820,7 +1820,7 @@ function admConteudo(){
       <div class="frow2 lem" style="margin-top:10px"><label class="lbl-in"><span>Tipo</span><select class="inp" id="av-nivel"><option value="info">📣 Informação</option><option value="alerta">⚠️ Alerta</option><option value="festa">🎉 Comemoração</option></select></label>
         <label class="lbl-in"><span>Fica no ar</span><select class="inp" id="av-dias"><option value="1">1 dia</option><option value="7" selected>7 dias</option><option value="30">30 dias</option><option value="0">Até eu tirar</option></select></label></div>
       <label class="nt-ck" style="margin-top:10px"><input type="checkbox" id="av-push" checked> <span>Enviar também como notificação no celular</span></label>
-      <p class="note" style="margin-top:4px">Chega para quem ativou as notificações (menos para você).</p>
+      <p class="note" style="margin-top:4px">Chega para todos que ativaram as notificações, inclusive você.</p>
       <button class="btn primary" data-a="adm-aviso" style="margin-top:12px">Publicar aviso</button>
       <h3 class="h3">Avisos</h3>${lista}</section>
     <section class="card" style="margin-top:12px"><h2 class="h2">Vídeos dos exercícios</h2>

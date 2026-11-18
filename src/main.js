@@ -1081,6 +1081,7 @@ async function notifSheet(){
     ${ck('nt-grupo', NOTIF.grupo!==false, 'Quando alguém do grupo terminar o treino')}
     ${ck('nt-reacoes', NOTIF.reacoes!==false, 'Quando reagirem ao meu treino')}
     ${ck('nt-resumo', NOTIF.resumo!==false, 'Resumo da semana no domingo à noite')}
+    ${ck('nt-avisos', NOTIF.avisos!==false, 'Avisos do app (academia fechada, mudanças…)')}
     ${ck('nt-lem', !!LEM_HORA && NOTIF.lembrete!==false, 'Lembrete nos dias de treino')}
     <label class="lbl-in nt-hora"><span>Horário do lembrete</span><input class="inp" id="nt-hora" type="time" value="${esc(LEM_HORA || LS.get('mt.lembrete', {h:'18:00'}).h || '18:00')}"></label>
     <p class="note">O lembrete chega só nos dias que têm treino na ficha, e não chega se você já treinou. Vale para todos os seus aparelhos.</p>
@@ -1120,7 +1121,7 @@ async function salvarNotif(){
   const v = id => { const el = $('#'+id); return el ? el.checked : true; };
   const hora = ($('#nt-hora') && $('#nt-hora').value) || '';
   const lem = v('nt-lem');
-  const notif = { grupo: v('nt-grupo'), reacoes: v('nt-reacoes'), lembrete: lem, resumo: v('nt-resumo') };
+  const notif = { grupo: v('nt-grupo'), reacoes: v('nt-reacoes'), lembrete: lem, resumo: v('nt-resumo'), avisos: v('nt-avisos') };
   try{
     await D.salvarPrefsNotif(UID, notif, lem ? hora : null);
     NOTIF = notif; LEM_HORA = lem ? hora : '';
@@ -1818,6 +1819,8 @@ function admConteudo(){
       <textarea class="notes" id="av-txt" maxlength="400" placeholder="Ex.: Academia fechada no feriado de sexta. Treino D fica para sábado."></textarea>
       <div class="frow2 lem" style="margin-top:10px"><label class="lbl-in"><span>Tipo</span><select class="inp" id="av-nivel"><option value="info">📣 Informação</option><option value="alerta">⚠️ Alerta</option><option value="festa">🎉 Comemoração</option></select></label>
         <label class="lbl-in"><span>Fica no ar</span><select class="inp" id="av-dias"><option value="1">1 dia</option><option value="7" selected>7 dias</option><option value="30">30 dias</option><option value="0">Até eu tirar</option></select></label></div>
+      <label class="nt-ck" style="margin-top:10px"><input type="checkbox" id="av-push" checked> <span>Enviar também como notificação no celular</span></label>
+      <p class="note" style="margin-top:4px">Chega para quem ativou as notificações (menos para você).</p>
       <button class="btn primary" data-a="adm-aviso" style="margin-top:12px">Publicar aviso</button>
       <h3 class="h3">Avisos</h3>${lista}</section>
     <section class="card" style="margin-top:12px"><h2 class="h2">Vídeos dos exercícios</h2>
@@ -1830,9 +1833,10 @@ async function publicarAviso(btn){
   const dias = +$('#av-dias').value;
   btn.disabled = true;
   try{
-    const a = await D.criarAviso({ texto, nivel: $('#av-nivel').value, expira: dias ? Date.now()+dias*864e5 : null });
+    const push = !!($('#av-push')||{}).checked;
+    const a = await D.criarAviso({ texto, nivel: $('#av-nivel').value, expira: dias ? Date.now()+dias*864e5 : null, notificar: push });
     AVISOS = [a].concat(AVISOS); S.adm.avisos = [a].concat(S.adm.avisos||[]);
-    render(); toast('Aviso publicado para todos.');
+    render(); toast(push ? 'Aviso publicado e enviado como notificação.' : 'Aviso publicado para todos.');
   }catch(e){ btn.disabled = false; toast('Não consegui publicar agora.', true); }
 }
 function admErros(){

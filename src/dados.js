@@ -54,7 +54,7 @@ export async function carregarTudo(uid){
     nome: perfil && perfil.nome || '',
     avatar: perfil && perfil.avatar_path || '',
     instagram: perfil && perfil.instagram || '',
-    notif: Object.assign({ grupo: true, reacoes: true, lembrete: true, resumo: true }, perfil && perfil.notif || {}),
+    notif: Object.assign({ grupo: true, reacoes: true, lembrete: true, resumo: true, avisos: true }, perfil && perfil.notif || {}),
     missoes: perfil && Array.isArray(perfil.missoes) ? perfil.missoes : [],
     tema: perfil && perfil.tema || '',
     aguaMeta: perfil && perfil.agua_meta || null,
@@ -255,7 +255,7 @@ export async function adminSalvarFicha(uid, id, nome, json){
 }
 export async function adminAtivarFicha(uid, id){ await rpc('admin_ativar_ficha', { p_user: uid, p_id: id }); }
 export async function listarAvisos(){ return (ok(await sb.from('app_avisos').select('id,texto,nivel,ativo,expira_em,created_at').order('created_at', { ascending: false })) || []).map(linhaParaAviso); }
-export async function criarAviso(a){ return linhaParaAviso(ok(await sb.from('app_avisos').insert({ texto: a.texto, nivel: a.nivel, expira_em: a.expira ? new Date(a.expira).toISOString() : null }).select().single())); }
+export async function criarAviso(a){ return linhaParaAviso(ok(await sb.from('app_avisos').insert({ texto: a.texto, nivel: a.nivel, expira_em: a.expira ? new Date(a.expira).toISOString() : null, notificar: a.notificar !== false }).select().single())); }
 export async function mudarAviso(id, ativo){ ok(await sb.from('app_avisos').update({ ativo }).eq('id', id)); }
 export async function apagarAviso(id){ ok(await sb.from('app_avisos').delete().eq('id', id)); }
 export async function listarErros(){ return ok(await sb.from('app_erros').select('id,user_id,msg,detalhe,tela,versao,aparelho,created_at').order('created_at', { ascending: false }).limit(100)) || []; }

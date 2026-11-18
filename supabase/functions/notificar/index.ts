@@ -4,6 +4,7 @@
 //   {tipo:'reacao', id}   -> avisa quem recebeu a reação
 //   {tipo:'lembretes'}    -> lembrete nos dias de treino, na hora escolhida
 //   {tipo:'resumo'}       -> domingo à noite: resumo da semana de cada pessoa
+//   {tipo:'aviso', id}    -> aviso publicado pelo admin vira notificação para todos
 //   {tipo:'teste'}        -> chamado pelo app (com login): aviso de teste para a própria pessoa
 //   {tipo:'setup'}        -> cria as chaves VAPID se ainda não existirem (não precisa da chave interna)
 import webpush from "npm:web-push@3.6.7";
@@ -74,7 +75,7 @@ async function enviar(usuarios: string[], msg: Msg) {
   return ok;
 }
 
-async function querem(usuarios: string[], chave: "grupo" | "reacoes" | "lembrete" | "resumo") {
+async function querem(usuarios: string[], chave: "grupo" | "reacoes" | "lembrete" | "resumo" | "avisos") {
   if (!usuarios.length) return [];
   const { data } = await sb.from("profiles").select("id,notif").in("id", usuarios);
   const fora = new Set((data || []).filter((p) => p.notif && p.notif[chave] === false).map((p) => p.id));
@@ -113,6 +114,21 @@ async function reacao(id: string) {
     body: "ao seu treino de hoje.",
     url: "/?v=hoje",
     tag: "reacao-" + r.from_user,
+  });
+}
+
+async function aviso(id: string) {
+  const { data: a } = await sb.from("app_avisos").select("texto,nivel,ativo,created_by").eq("id", id).maybeSingle();
+  if (!a || !a.ativo) return 0;
+  const { data: subs } = await sb.from("push_subs").select("user_id");
+  const todos = [...new Set((subs || []).map((x) => x.user_id))].filter((u) => u !== a.created_by);
+  const titulo = a.nivel === "alerta" ? "⚠️ Atenção" : a.nivel === "festa" ? "🎉 Boa notícia" : "📣 Aviso do Meus Treinos";
+  const texto = String(a.texto || "").trim();
+  return enviar(await querem(todos, "avisos"), {
+    title: titulo,
+    body: texto.length > 180 ? texto.slice(0, 177) + "…" : texto,
+    url: "/?v=hoje",
+    tag: "aviso-" + id,
   });
 }
 
@@ -248,6 +264,7 @@ Deno.serve(async (req) => {
     let n = 0;
     if (corpo.tipo === "treino" && corpo.id) n = await treinoTerminado(corpo.id);
     else if (corpo.tipo === "reacao" && corpo.id) n = await reacao(corpo.id);
+    else if (corpo.tipo === "aviso" && corpo.id) n = await aviso(corpo.id);
     else if (corpo.tipo === "lembretes") n = await lembretes();
     else if (corpo.tipo === "resumo" && corpo.previa) { const pv: Msg[] = []; await resumo(pv); return Response.json({ ok: true, previa: pv }); }
     else if (corpo.tipo === "resumo") n = await resumo();

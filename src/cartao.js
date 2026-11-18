@@ -269,8 +269,8 @@ export async function desenharSemana(d){
   const [c, x] = base();
   const s = d.ref;
   const cardio = s && s.letter==='CARDIO', cd = cardio ? ((s.ex||[])[0]||{}).cardio || {} : null;
-  const aula = cardio && (cd.aula || s.wname==='Spinning' || s.wname==='Jump');
-  if(aula) equipamentoAula(x, s.wname); else equipamento(x);
+  const aula = cardio && (cd.aula || s.wname==='Spinning' || s.wname==='Jump' || s.wname==='Pump');
+  if(aula && s.wname!=='Pump') equipamentoAula(x, s.wname); else equipamento(x);
   marca(x, d.data);
   rotulo(x, s ? (aula ? 'AULA CONCLUÍDA' : cardio ? 'CARDIO CONCLUÍDO' : 'TREINO CONCLUÍDO') : 'MINHA SEMANA', 400);
   x.textAlign = 'left'; x.font = `400 230px ${DISPLAY}`; x.fillStyle = COR.ink;

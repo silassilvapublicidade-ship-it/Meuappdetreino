@@ -92,7 +92,8 @@ const CARDIO_TIPOS = ['Esteira','Corrida na rua','Caminhada','Bicicleta','Elípt
 // Aulas: gasto estimado por MET (equivalente metabólico) conforme a intensidade
 const AULAS = {
   'Spinning': { ico:'🚴', met:{ leve:5.5, moderada:7, forte:8.5, 'muito forte':10.5 }, km:true },
-  'Jump':     { ico:'🤸', met:{ leve:4.5, moderada:6, forte:7.5, 'muito forte':9 }, km:false }
+  'Jump':     { ico:'🤸', met:{ leve:4.5, moderada:6, forte:7.5, 'muito forte':9 }, km:false },
+  'Pump':     { ico:'🏋️', met:{ leve:3.5, moderada:5, forte:6, 'muito forte':7.5 }, km:false }
 };
 const INTENS = [['leve','Leve','dá para conversar'],['moderada','Moderada','fala frases curtas'],['forte','Forte','fala poucas palavras'],['muito forte','Muito forte','no limite']];
 function ehCardio(s){ return !!s && s.letter==='CARDIO'; }

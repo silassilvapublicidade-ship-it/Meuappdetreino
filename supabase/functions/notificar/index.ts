@@ -93,8 +93,8 @@ async function treinoTerminado(id: string) {
   const nome = primeiroNome(perfil?.nome);
   const min = s.dur_s ? Math.round(s.dur_s / 60) : 0;
   const cardio = s.letter === "CARDIO";
-  const aula = cardio && (s.workout_name === "Spinning" || s.workout_name === "Jump");
-  const icone = s.workout_name === "Spinning" ? "🚴" : "🤸";
+  const aula = cardio && ["Spinning", "Jump", "Pump"].includes(s.workout_name);
+  const icone = s.workout_name === "Spinning" ? "🚴" : s.workout_name === "Pump" ? "🏋️" : "🤸";
   return enviar(await querem(outros, "grupo"), {
     title: aula ? `${nome} fez aula de ${String(s.workout_name).toLowerCase()} ${icone}` : cardio ? `${nome} fez cardio 🏃` : `${nome} terminou o treino 💪`,
     body: (aula ? "Aula registrada" : cardio ? "Cardio registrado" : `Treino ${s.letter}${s.workout_name ? " · " + s.workout_name : ""}`) +

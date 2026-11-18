@@ -757,3 +757,16 @@ html[data-tema]{transition:none}
 .int-b.on{border-color:var(--cyan);background:rgba(var(--cyan-rgb),.12)}
 #cd-est{margin:8px 0 10px}
 #cd-km-l[hidden]{display:none}
+
+/* ----- Trocar treino do dia ----- */
+.tt-list{display:grid;gap:8px}
+.tt{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:center;padding:12px;border-radius:16px;border:1px solid var(--line);background:var(--panel)}
+.tt.tt-sug{border-color:rgba(var(--mint-rgb),.55);box-shadow:0 0 0 2px rgba(var(--mint-rgb),.12)}
+.tt.feito{opacity:.72}
+.tt-l{font-family:var(--display);font-weight:900;font-size:34px;width:44px;text-align:center;line-height:1}
+.tt-i b{display:block;font-size:15px;line-height:1.25}
+.tt-i small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.tt-st{display:inline-block;margin-top:5px;font-size:11px;font-weight:800;color:var(--warn)}
+.tt-st.ok{color:var(--mint)}
+.tt-b{grid-column:1/-1;display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-top:6px}
+.tt-b .btn{min-height:42px}

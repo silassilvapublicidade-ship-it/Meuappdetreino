@@ -195,11 +195,55 @@ function nomeDeChave(){
 
 /* ---------- Regras de treino ---------- */
 function sessionsDaFicha(){ return FICHA ? S.sessions.filter(s=>s.planId===FICHA.id) : []; }
+// Próximo treino: primeiro o que ficou pendente na semana (dia previsto já passou ou é hoje),
+// depois o que vem a seguir no cronograma; sem cronograma, segue a sequência A → B → C…
+function feitosNaSemana(){
+  const wk = startOfWeek(Date.now());
+  return new Set(sessionsDaFicha().filter(s=>s.start>=wk && !ehCardio(s)).map(s=>s.letter));
+}
+function pendentesSemana(){
+  if(!FICHA) return [];
+  const feitos = feitosNaSemana(), hoje = (new Date().getDay()+6)%7, out = [];
+  const wk = startOfWeek(Date.now()), desde = FICHA.criada ? chaveDia(FICHA.criada) : '';
+  SEMANA.forEach((wd,i)=>{
+    const L = FICHA.sched[wd];
+    if(chaveDia(wk + i*864e5 + 12*3600e3) < desde) return; // a ficha ainda não existia nesse dia
+    if(i<=hoje && FICHA.W[L] && !feitos.has(L) && !out.some(x=>x.L===L)) out.push({ L, wd, hoje: i===hoje });
+  });
+  return out;
+}
 function nextLetter(){
   if(!FICHA || !FICHA.order.length) return null;
-  const last = sessionsDaFicha()[0];
+  const temCrono = SEMANA.some(wd=>FICHA.W[FICHA.sched[wd]]);
+  if(temCrono){
+    const pend = pendentesSemana();
+    if(pend.length) return pend[0].L;
+    const feitos = feitosNaSemana(), hoje = (new Date().getDay()+6)%7;
+    const prox = SEMANA.find((wd,i)=>i>hoje && FICHA.W[FICHA.sched[wd]] && !feitos.has(FICHA.sched[wd]));
+    if(prox!=null) return FICHA.sched[prox];
+  }
+  const last = sessionsDaFicha().find(s=>!ehCardio(s));
   if(!last || FICHA.order.indexOf(last.letter)<0) return FICHA.order[0];
   return FICHA.order[(FICHA.order.indexOf(last.letter)+1)%FICHA.order.length];
+}
+// Escolher outro treino para hoje (ex.: academia lotada)
+function trocarTreinoSheet(){
+  if(!FICHA) return;
+  const feitos = feitosNaSemana(), sug = nextLetter(), hoje = new Date().getDay();
+  const ultimo = L => { const s = sessionsDaFicha().find(x=>x.letter===L); return s ? fmtDate(s.start) : null; };
+  const diaDe = L => { const d = SEMANA.find(wd=>FICHA.sched[wd]===L); return d!=null ? DIAS[d] : null; };
+  const itens = FICHA.order.map(L=>{
+    const W = FICHA.W[L], feito = feitos.has(L), u = ultimo(L), dia = diaDe(L);
+    const status = feito ? '<span class="tt-st ok">✓ feito nesta semana</span>' : '<span class="tt-st">ainda não feito nesta semana</span>';
+    return `<div class="tt${L===sug?' tt-sug':''}${feito?' feito':''}">
+      <div class="tt-l neon" aria-hidden="true">${esc(L)}</div>
+      <div class="tt-i"><b>${esc(W.name)}</b><small>${esc(W.ex.length+' exercícios'+(dia?' · '+dia+(FICHA.sched[hoje]===L?' (hoje)':''):''))}${u?' · último: '+esc(u):''}</small>${status}</div>
+      <div class="tt-b"><button class="btn sm${L===sug?' primary':''}" data-a="start" data-l="${esc(L)}">${L===sug?'Começar (sugerido)':'Começar'}</button><button class="btn sm ghost" data-a="go-close" data-v="treino:${esc(L)}">Ver</button></div></div>`;
+  }).join('');
+  openSheet(`<h2>Escolher o treino de hoje</h2>
+    <p>Academia lotada ou equipamento ocupado? Faça qualquer treino da ficha. O app guarda o que ficou para trás e sugere ele no próximo dia.</p>
+    <div class="tt-list">${itens}</div>
+    <div class="btns" style="margin-top:12px"><button class="btn ghost" data-a="close">Fechar</button></div>`);
 }
 function newDraft(L){
   const W = FICHA.W[L];
@@ -616,7 +660,13 @@ function vHoje(){
     const L = nextLetter(), W = FICHA.W[L];
     const ups = W.ex.reduce((n,e)=>{ const s=suggest(e, 0, L, FICHA.id); return n + (s ? s.parts.filter(p=>p&&p.kind==='up').length : 0); }, 0);
     const seq = FICHA.order.join(' → ');
-    const why = last
+    const pend = pendentesSemana(), atrasado = pend.length && pend[0].L===L && !pend[0].hoje;
+    const trocouHoje = S.sessions.find(x=>sameDay(x.start, now) && x.planId===FICHA.id && !ehCardio(x) && x.letter!==L);
+    const why = trocouHoje && pend.length && pend[0].L===L
+      ? `Hoje você fez o Treino ${esc(trocouHoje.letter)} no lugar do ${esc(L)}. O ${esc(L)} fica guardado como o próximo.`
+      : atrasado
+      ? `O Treino ${esc(L)} de ${DIAS[pend[0].wd]} ficou pendente, então ele vem primeiro.${pend.length>1?' Depois: '+pend.slice(1).map(p=>p.L).join(', ')+'.':''}`
+      : last
       ? `Último: Treino ${esc(last.letter)} em ${fmtDate(last.start)}. Se faltar um dia, siga a sequência ${seq}.`
       : `Primeiro registro: comece pelo ${FICHA.order[0]} e siga a sequência ${seq}.`;
     hero = `<section class="hero">
@@ -626,7 +676,8 @@ function vHoje(){
         <div class="meta">${W.ex.length} exercícios · ${W.total} séries</div></div></div>
       <p class="why">${why}${ups?` <span class="upnote">▲ ${ups} ${ups>1?'exercícios prontos':'exercício pronto'} para subir carga.</span>`:''}</p>
       <div class="btns"><button class="btn primary" data-a="start" data-l="${L}">Começar treino ${L}</button>
-      <button class="btn ghost" data-a="go" data-v="treino:${L}">Ver exercícios</button></div></section>`;
+      <button class="btn ghost" data-a="go" data-v="treino:${L}">Ver exercícios</button>
+      ${FICHA.order.length>1?`<button class="btn ghost" data-a="trocar-treino">⇄ Fazer outro treino hoje</button>`:''}</div></section>`;
   }
   let today;
   if(todayDone.length) today = `Hoje você já fez: <b>${todayDone.map(s=>esc(nomeSessao(s))).join(' e ')}</b> · ${mins(todayDone.reduce((n,s)=>n+(s.dur||0),0))} min.`;
@@ -634,7 +685,7 @@ function vHoje(){
   else if(sched==='ativo') today = `Hoje (${DIAS[dow]}) é <b>descanso ativo</b>: recuperação, sono e hidratação.`;
   else {
     today = `Cronograma de hoje (${DIAS[dow]}): <b>Treino ${sched}</b>.`;
-    if(!d && last && sched!==nextLetter()) today += ` Pela sequência, o próximo é o ${nextLetter()}.`;
+    if(!d && sched!==nextLetter()) today += ` O app sugere o ${nextLetter()} (pendente).`;
   }
   const wk = startOfWeek(now);
   const weekSessions = S.sessions.filter(s=>s.start>=wk);
@@ -2790,7 +2841,7 @@ document.addEventListener('click', async e=>{
     case 'go': go(t.dataset.v); break;
     case 'go-close': closeSheet(true); go(t.dataset.v); break;
     case 'evo': S.evoTab = t.dataset.t; if(S.view!=='evolucao') go('evolucao'); else render(); break;
-    case 'start': startWorkout(t.dataset.l); break;
+    case 'start': if(!S.draft && !$('#sheet').hidden) closeSheet(true); startWorkout(t.dataset.l); break;
     case 'force-start': S.draft=null; LS.set(kDraft(), null); stopRest(); closeSheet(true); startWorkout(t.dataset.l); break;
     case 'check': toggleSet(+t.dataset.ei, +t.dataset.si); break;
     case 'addset': addSet(+t.dataset.ei); break;
@@ -2798,6 +2849,7 @@ document.addEventListener('click', async e=>{
     case 'vivo': vivoSheet(); break;
     case 'notif': closeSheet(true); notifSheet(); break;
     case 'seq': closeSheet(true); seqSheet(); break;
+    case 'trocar-treino': trocarTreinoSheet(); break;
     case 'missoes': closeSheet(true); missoesSheet(); break;
     case 'agua': aguaSheet(); break;
     case 'agua+': addAgua(+t.dataset.ml); break;

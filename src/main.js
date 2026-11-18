@@ -931,8 +931,7 @@ function verificarMissoes(mostrar){
   if(S.view==='hoje' && !$('#sheet:not([hidden])')) render();
 }
 function avisarNivel(nv){
-  const t = TEMAS.find(x=>x.nivel===nv.i);
-  festa('⭐', 'Subiu para o nível '+nv.nome+'!', t ? 'Novo tema liberado: '+t.nome : 'Continue assim!');
+  festa('⭐', 'Subiu para o nível '+nv.nome+'!', 'Continue assim!');
   confete(1.2);
 }
 function cardMissoes(){
@@ -1031,18 +1030,15 @@ async function salvarMetaAguaSheet(){
 
 /* ----- 8. Temas ----- */
 function temasSheet(){
-  const nv = nivel(pontos());
-  const cards = TEMAS.map(t=>{ const livre = nv.i >= t.nivel, on = TEMA===t.id;
-    return `<button class="tema${on?' on':''}${livre?'':' lock'}" data-a="tema" data-t="${t.id}" ${livre?'':'aria-disabled="true"'} aria-pressed="${on}">
-      <span class="tm-sw" style="background:linear-gradient(135deg,${t.cor[0]},${t.cor[1]})">${livre?(on?'✓':''):'🔒'}</span>
-      <b>${esc(t.nome)}</b><small>${livre ? (on?'em uso':'liberado') : 'nível '+esc(NIVEIS[t.nivel][1])}</small></button>`; }).join('');
-  openSheet(`<h2>Temas</h2><p>Cada nível novo libera um tema de cores para o app. Você está no nível <b>${esc(nv.nome)}</b>.</p>
+  const cards = TEMAS.map(t=>{ const on = TEMA===t.id;
+    return `<button class="tema${on?' on':''}" data-a="tema" data-t="${t.id}" aria-pressed="${on}">
+      <span class="tm-sw" style="background:linear-gradient(135deg,${t.cor[0]},${t.cor[1]})">${on?'✓':''}</span>
+      <b>${esc(t.nome)}</b><small>${on?'em uso':'toque para usar'}</small></button>`; }).join('');
+  openSheet(`<h2>Temas</h2><p>Escolha as cores do app. Vale só para você e pode trocar quando quiser.</p>
     <div class="temas">${cards}</div><div class="btns" style="margin-top:14px"><button class="btn ghost" data-a="close">Fechar</button></div>`);
 }
 async function escolherTema(id){
   const t = TEMAS.find(x=>x.id===id); if(!t) return;
-  const nv = nivel(pontos());
-  if(nv.i < t.nivel){ toast('Libera no nível '+NIVEIS[t.nivel][1]+'. Continue treinando!'); return; }
   TEMA = t.id; aplicarTema(TEMA); LS.set('mt.tema.'+UID, TEMA); guardarCache();
   temasSheet();
   try{ await D.salvarTema(UID, TEMA); }catch(e){}
@@ -3101,7 +3097,7 @@ async function carregar(silencioso){
     if(doAparelho){ if(!silencioso) toast('Sem internet: usando os dados guardados no aparelho. O treino é salvo quando a conexão voltar.'); }
     else { S.sync = 'ok'; enviarPendentes(); sincronizarAparelho(); salvarAguaDepois(); if(LS.get('mt.missoes.pend.'+UID, false)) D.salvarMissoes(UID, MISSOES).then(()=>LS.set('mt.missoes.pend.'+UID, false)).catch(()=>{}); }
     // tema: só vale se o nível já liberou
-    { const t = TEMAS.find(x=>x.id===TEMA); aplicarTema(t && nivel(pontos()).i >= t.nivel ? TEMA : 'neon'); }
+    { const t = TEMAS.find(x=>x.id===TEMA); aplicarTema(t ? TEMA : 'neon'); }
     verificarMissoes(false);
     carregarGrupo();
     abrirPeloLink();

@@ -773,3 +773,9 @@ html[data-tema]{transition:none}
 .exec{color:var(--cyan)!important}
 .exec b{color:var(--ink);font-weight:800}
 .wcard .exec b,.tt-i .exec b,.tt-i small b{display:inline;font:inherit;font-weight:800;color:var(--ink);text-transform:none;letter-spacing:0;margin:0}
+
+/* semana na tela Hoje: grupo muscular embaixo da letra e dia clicável */
+button.day{font:inherit;color:var(--ink);cursor:pointer;width:100%;min-width:0}
+button.day:active{transform:scale(.96)}
+.day .s{height:auto;min-height:11px;max-width:100%;padding:0 2px;text-align:center;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.day.tap:not(.done) .s{color:var(--cyan);font-size:9.5px}

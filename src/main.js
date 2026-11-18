@@ -648,6 +648,13 @@ async function salvarEdicao(){
 }
 
 /* ----- Hoje ----- */
+// Grupo muscular curto para caber embaixo da letra (ex.: "Peito / Tríceps / Metabólico" → "Peito Tríceps")
+function rotuloCurto(W){
+  const nome = String(W && W.name || '').replace(/\(.*?\)/g,'').trim();
+  const partes = nome.split(/\s*[\/·,+&]\s*|\s+e\s+/i).map(x=>x.trim()).filter(Boolean);
+  if(partes.length >= 2) return partes.slice(0,2).map(x=>x.split(/\s+/)[0]).join(' ');
+  return nome.split(/\s+/).slice(0,2).join(' ');
+}
 function vHoje(){
   if(!FICHA) return vOnboarding();
   const now = Date.now(), dow = new Date().getDay(), sched = FICHA.sched[dow];
@@ -706,8 +713,13 @@ function vHoje(){
     const isRest = plan==='ativo'||plan==='total';
     const isToday = sameDay(dayTs, now);
     const g = done.length ? `<span class="ck" aria-hidden="true">${ICON.check}</span>` : (isRest ? (plan==='ativo'?'☾':'⚡') : plan);
-    const sub = done.length ? done.map(s=>esc(letraCurta(s))).join('+') : (isRest ? 'folga' : '');
-    return `<div class="day${done.length?' done':''}${isRest&&!done.length?' rest':''}${isToday?' today':''}" aria-label="${DIAS[wd]}${done.length?': '+done.map(s=>esc(nomeSessao(s))).join(' e ')+' feito':''}"><span class="d">${WD[wd]}</span><span class="g">${g}</span><span class="s">${sub}</span></div>`;
+    const treino = !isRest && FICHA.W[plan];
+    const grupo = treino ? rotuloCurto(treino) : '';
+    const sub = done.length ? done.map(s=>esc(letraCurta(s))).join('+') : (isRest ? 'folga' : esc(grupo));
+    const rot = `${DIAS[wd]}${done.length?': '+done.map(s=>nomeSessao(s)).join(' e ')+' feito':treino?': Treino '+plan+', '+treino.name:isRest?': folga':''}`;
+    const cls = `day${done.length?' done':''}${isRest&&!done.length?' rest':''}${isToday?' today':''}${treino?' tap':''}`;
+    const inner = `<span class="d">${WD[wd]}</span><span class="g">${g}</span><span class="s">${sub}</span>`;
+    return treino ? `<button class="${cls}" data-a="go" data-v="treino:${esc(plan)}" aria-label="${esc(rot)}. Abrir treino.">${inner}</button>` : `<div class="${cls}" aria-label="${esc(rot)}">${inner}</div>`;
   }).join('');
   const lastBody = S.body[S.body.length-1];
   const lastAny = S.sessions[0];

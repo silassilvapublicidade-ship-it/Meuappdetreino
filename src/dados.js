@@ -36,7 +36,7 @@ function linhaParaFicha(r){
 export async function carregarTudo(uid){
   const desde = new Date(Date.now() - 70*864e5).toISOString().slice(0,10);
   const [perfil, fichas, treinos, peso, aval, fotos, rascunho, videos, editor, admin, avisos, catalogo, agua, sono, cochilos] = await Promise.all([
-    sb.from('profiles').select('nome,avatar_path,instagram,meta_peso,meta_gordura,meta_data,notif,lembrete_hora,missoes,tema,agua_meta,sono_meta,sono_acordar').eq('id', uid).maybeSingle().then(ok),
+    sb.from('profiles').select('nome,avatar_path,instagram,meta_peso,meta_gordura,meta_data,notif,lembrete_hora,missoes,tema,agua_meta,sono_meta,sono_acordar,inicio').eq('id', uid).maybeSingle().then(ok),
     sb.from('plans').select('*').order('created_at', { ascending: true }).then(ok),
     sb.from('sessions').select('*').order('started_at', { ascending: false }).limit(1000).then(ok),
     sb.from('body_weights').select('d,kg').order('d', { ascending: true }).then(ok),
@@ -64,6 +64,7 @@ export async function carregarTudo(uid){
     sono: Object.fromEntries((sono || []).map(n => [n.dia, { dormiu: n.dormiu, acordou: n.acordou, q: n.qualidade || null, obs: n.obs || '', pausas: Array.isArray(n.pausas) ? n.pausas : [] }])),
     sonoMeta: perfil && perfil.sono_meta || null,
     sonoAcordar: perfil && perfil.sono_acordar || '',
+    inicio: perfil && perfil.inicio || null,
     cochilos: (cochilos || []).map(c => ({ id: c.id, dia: c.dia, ini: c.ini, fim: c.fim })),
     lembreteHora: perfil && perfil.lembrete_hora ? String(perfil.lembrete_hora).slice(0,5) : '',
     metas: { peso: perfil && perfil.meta_peso != null ? Number(perfil.meta_peso) : null, gordura: perfil && perfil.meta_gordura != null ? Number(perfil.meta_gordura) : null, data: perfil && perfil.meta_data || null },
@@ -220,6 +221,7 @@ export async function salvarSono(uid, dia, n){
   if(!n){ ok(await sb.from('sono').delete().eq('user_id', uid).eq('dia', dia)); return; }
   ok(await sb.from('sono').upsert({ user_id: uid, dia, dormiu: new Date(n.dormiu).toISOString(), acordou: new Date(n.acordou).toISOString(), qualidade: n.q || null, obs: n.obs || null, pausas: (n.pausas || []).map(p => ({ ini: new Date(p.ini).toISOString(), fim: new Date(p.fim).toISOString() })), updated_at: new Date().toISOString() }, { onConflict: 'user_id,dia' }));
 }
+export async function salvarInicio(uid, inicio){ ok(await sb.from('profiles').update({ inicio }).eq('id', uid)); }
 export async function salvarSonoAcordar(uid, hhmm){ ok(await sb.from('profiles').update({ sono_acordar: hhmm || null }).eq('id', uid)); }
 export async function criarCochilo(uid, c){ return ok(await sb.from('sono_cochilos').insert({ user_id: uid, dia: c.dia, ini: new Date(c.ini).toISOString(), fim: new Date(c.fim).toISOString() }).select('id,dia,ini,fim').single()); }
 export async function apagarCochilo(id){ ok(await sb.from('sono_cochilos').delete().eq('id', id)); }

@@ -367,6 +367,7 @@ function render(){
   renderStatus(); renderLive(); tickClock();
   if(v==='sessao') updateProgress();
   hidratarFotos();
+  if(S.sino && !$('#sheet').hidden){ if(avisosSistema().length) sinoSheet(); else closeSheet(true); }
 }
 function statusPill(){ return '<span class="sync" id="sync"></span>'; }
 function renderStatus(){
@@ -697,7 +698,7 @@ function vHoje(){
       ${avisoSonoTreino()}
       <div class="btns"><button class="btn primary" data-a="start" data-l="${L}">Começar treino ${L}</button>
       <button class="btn ghost" data-a="go" data-v="treino:${L}">Ver exercícios</button>
-      ${FICHA.order.length>1?`<button class="btn ghost" data-a="trocar-treino">⇄ Fazer outro treino hoje</button>`:''}</div></section>`;
+      </div></section>`;
   }
   let today;
   if(todayDone.length) today = `Hoje você já fez: <b>${todayDone.map(s=>esc(nomeSessao(s))).join(' e ')}</b> · ${mins(todayDone.reduce((n,s)=>n+(s.dur||0),0))} min.`;
@@ -733,22 +734,12 @@ function vHoje(){
     <button class="tile" data-a="evo" data-t="corpo" style="text-align:left;color:inherit;font:inherit"><span class="k">Peso</span><span class="v">${lastBody ? fmtN(lastBody.kg)+'<small> kg</small>' : '<small>registrar</small>'}</span></button>
   </div>`;
   let date = new Date().toLocaleDateString('pt-BR',{weekday:'long', day:'numeric', month:'long'}); date = date.charAt(0).toUpperCase()+date.slice(1);
-  return `<header class="top"><span class="date">${esc(date)}<small class="ola">Olá, ${esc((NOME||'').split(' ')[0])}${INSTA?' · '+arroba(INSTA):''}</small></span><span class="top-r">${chipSeq()}${statusPill()}${avatarBtn()}</span></header>
+  return `<header class="top"><span class="date">${esc(date)}<small class="ola">Olá, ${esc((NOME||'').split(' ')[0])}${INSTA?' · '+arroba(INSTA):''}</small></span><span class="top-r">${chipSeq()}${statusPill()}${sinoBtn()}${avatarBtn()}</span></header>
     ${avisosHoje()}
-    ${cardRetro()}
-    ${cardInstalar()}
-    ${cardNotif()}
-    ${cardFichaVencendo()}
     ${hero}
     <p class="todayline">${today}</p>${linhaSeqHoje()}
-    <button class="btn sm ghost cd-btn" data-a="cardio">♥ Registrar cardio</button>
-    <div class="section"><div class="card-h"><h2 class="h2">Esta semana</h2><button class="link" data-a="share" data-t="semana">${ICON.share} Compartilhar</button></div><div class="week">${cells}</div></div>
-    ${cardAgua()}
-    ${cardSono()}
-    ${cardMissoes()}
-    <div class="section">${nivelStrip()}</div>
-    <div class="section">${tiles}</div>
-    ${grupoCard()}`;
+    ${acoesRapidas()}
+    ${modulosHoje(`<div class="section"><div class="card-h"><h2 class="h2">Esta semana</h2><button class="link" data-a="share" data-t="semana">${ICON.share} Compartilhar</button></div><div class="week">${cells}</div></div>`, tiles)}`;
 }
 function nivelStrip(){
   const nv = nivel(pontos());
@@ -1007,7 +998,8 @@ function blocoAgua(){
       <div class="ag-bts"><button class="chipbtn" data-a="agua+" data-ml="250" aria-label="Mais um copo, 250 ml">+250 ml</button><button class="chipbtn" data-a="agua+" data-ml="500" aria-label="Mais uma garrafa, 500 ml">+500 ml</button><button class="chipbtn ghost" data-a="agua-undo" aria-label="Desfazer o último registro de água">↩</button></div></div></div>`;
 }
 function atualizarAgua(){
-  const c = $('#agua-card'); if(c) c.innerHTML = blocoAgua();
+  const c = $('#agua-card'); if(c){ if(c.dataset.mod) c.outerHTML = modAgua(); else c.innerHTML = blocoAgua(); }
+  const q = document.querySelector('.qa-b[data-a="agua+"] small'); if(q) q.textContent = '+250 ml · '+litros(aguaHoje())+' L';
   if(!$('#sheet').hidden && $('#ag-sheet')) aguaSheet();
 }
 function aguaSheet(){
@@ -1354,6 +1346,146 @@ async function salvarAcordarSono(){
   catch(e){ toast('Salvo no aparelho. Confira a internet.', true); }
 }
 
+/* ----- Início modular: ações rápidas, módulos escolhidos, compactos, pela hora e sininho ----- */
+const MODULOS = [
+  { id:'semana',  ico:'📅', nome:'Esta semana', desc:'Os 7 dias com o treino de cada um' },
+  { id:'agua',    ico:'💧', nome:'Água', desc:'Copos do dia e meta', modo:true },
+  { id:'sono',    ico:'🌙', nome:'Sono', desc:'Última noite, Vou dormir e Acordei', modo:true },
+  { id:'missoes', ico:'🎯', nome:'Missões da semana', desc:'Três metas que mudam toda segunda', modo:true },
+  { id:'grupo',   ico:'👥', nome:'Família', desc:'Quem treinou e as reações', modo:true },
+  { id:'nivel',   ico:'⭐', nome:'Nível e conquistas', desc:'Pontos, semanas ativas' },
+  { id:'numeros', ico:'📊', nome:'Números', desc:'Treinos na semana, último treino e peso' },
+];
+const INICIO_PADRAO = { ordem: MODULOS.map(m=>m.id), ocultos: [], completos: [], auto: true };
+let INICIO = JSON.parse(JSON.stringify(INICIO_PADRAO));
+function normalizarInicio(x){
+  const ids = MODULOS.map(m=>m.id), o = Object.assign({}, INICIO_PADRAO, x || {});
+  const ordem = (Array.isArray(o.ordem) ? o.ordem : []).filter(i=>ids.includes(i));
+  ids.forEach(i=>{ if(!ordem.includes(i)) ordem.push(i); });
+  return { ordem, ocultos: (o.ocultos||[]).filter(i=>ids.includes(i)), completos: (o.completos||[]).filter(i=>ids.includes(i)), auto: o.auto !== false };
+}
+function completo(id){ return INICIO.completos.includes(id); }
+
+/* 1. Ações rápidas */
+function acoesRapidas(){
+  const a = noiteAberta(), hoje = chaveDia(Date.now()), temNoite = !!noiteDe(hoje);
+  const sono = a ? (a.pausa ? ['sono-voltei','😴','Voltei a dormir'] : ['sono-acordei','☀️','Acordei'])
+    : ehNoite() ? ['sono-dormir','🌙','Vou dormir']
+    : !temNoite ? ['sono-reg','🌙','Registrar sono'] : ['sono','🌙','Sono'];
+  const bts = [
+    ['cardio','❤️','Cardio ou aula'],
+    ['agua+','💧','+250 ml água', ' data-ml="250"'],
+    sono,
+    ['cochilo','💤','Cochilo'],
+    ['peso-rapido','⚖️','Peso'],
+    FICHA && FICHA.order.length>1 && !S.draft ? ['trocar-treino','⇄','Outro treino'] : ['evo','📈','Evolução',' data-t="cargas"'],
+  ];
+  return `<div class="qa" role="group" aria-label="Ações rápidas">${bts.map(([act,ico,txt,extra])=>`<button class="qa-b" data-a="${act}"${extra||''}><span aria-hidden="true">${ico}</span><small>${txt}</small></button>`).join('')}</div>`;
+}
+function pesoRapidoSheet(){
+  const lb = S.body[S.body.length-1];
+  openSheet(`<h2>⚖️ Registrar peso</h2>${lb?`<p>Último: <b>${fmtN(lb.kg)} kg</b> em ${esc(fmtDay(lb.d))}.</p>`:''}
+    <div class="row"><input class="inp" id="bkg" inputmode="decimal" autocomplete="off" placeholder="Peso (kg)" aria-label="Peso em kg"><input class="inp" type="date" id="bdate" value="${dayKey(Date.now())}" aria-label="Data da pesagem"></div>
+    <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="peso-rapido-ok">Salvar peso</button><button class="btn ghost" data-a="close">Cancelar</button></div>`);
+  setTimeout(()=>{ const i = $('#bkg'); if(i) i.focus(); }, 60);
+}
+
+/* 4. Módulos compactos */
+function linhaModulo(id, ico, titulo, resumo, abrir, acao){
+  return `<div class="section mod" data-mod="${id}"><button class="mod-h" data-a="${abrir}"><span class="mod-i" aria-hidden="true">${ico}</span><span class="mod-t"><b>${titulo}</b><small>${resumo}</small></span><span class="mod-c" aria-hidden="true">›</span></button>${acao||''}</div>`;
+}
+function modAgua(){
+  if(completo('agua')) return cardAgua();
+  const dk = chaveDia(Date.now()), ml = aguaHoje(), meta = metaAguaDe(dk), pct = Math.min(100, Math.round(ml/meta*100));
+  return `<div class="section mod" data-mod="agua" id="agua-card"><button class="mod-h" data-a="agua"><span class="mod-i" aria-hidden="true">💧</span><span class="mod-t"><b>Água</b><small>${litros(ml)} de ${litros(meta)} L${ml>=meta?' ✅':''}</small><span class="bar sm" aria-hidden="true"><i style="width:${pct}%"></i></span></span><span class="mod-c" aria-hidden="true">›</span></button><button class="mod-a" data-a="agua+" data-ml="250" aria-label="Mais um copo, 250 ml">+250</button></div>`;
+}
+function modSono(){
+  if(completo('sono')) return cardSono();
+  const n = noiteDe(chaveDia(Date.now())), a = noiteAberta();
+  const resumo = a ? (a.pausa ? 'Acordado desde '+horaDe(a.pausa) : 'Dormindo desde '+horaDe(a.dormiu))
+    : n ? `${durTxt(duracao(n))} esta noite${n.q?' '+QUALIDADE[n.q-1][1]:''}${acordado(n)?' · acordou '+n.pausas.length+'×':''}`
+    : ehNoite() && horaDeitar() ? 'Deite às '+horaDeitar()+' para dormir '+durTxt(metaSono()) : 'Sem registro desta noite';
+  const acao = a ? `<button class="mod-a" data-a="${a.pausa?'sono-voltei':'sono-acordei'}">${a.pausa?'😴 Voltei':'☀️ Acordei'}</button>`
+    : n ? '' : ehNoite() ? `<button class="mod-a" data-a="sono-dormir">🌙 Vou dormir</button>` : `<button class="mod-a" data-a="sono-reg">Registrar</button>`;
+  const coch = minCochilos(chaveDia(Date.now()));
+  return linhaModulo('sono', '🌙', 'Sono', resumo + (coch ? ` · 💤 ${coch<60?coch+' min':durTxt(coch)}` : ''), 'sono', acao);
+}
+function modMissoes(){
+  if(!FICHA) return '';
+  if(completo('missoes')) return cardMissoes();
+  const M = missoesAtuais(), ok = M.filter(m=>m.ok).length, prox = M.find(m=>!m.ok);
+  return linhaModulo('missoes', '🎯', `Missões · ${ok} de ${M.length}`, ok===M.length ? 'Todas cumpridas nesta semana ✅' : 'Próxima: '+esc(prox.txt), 'missoes');
+}
+function modGrupo(){
+  if(!S.grupo || completo('grupo') || S.grupoAberto) return grupoCard() + (S.grupo && !completo('grupo') && S.grupoAberto ? `<button class="link mod-rec" data-a="grupo-recolher">▴ Recolher família</button>` : '');
+  const hoje = chaveDia(Date.now()), meus = S.sessions.some(x=>chaveDia(x.start)===hoje);
+  const quem = (S.grupoM||[]).filter(m=> m.uid===UID ? meus || m.dias.includes(hoje) : m.dias.includes(hoje)).map(m=> m.uid===UID ? 'você' : primeiroNome(m.nome));
+  const vivos = (S.grupoM||[]).filter(m=>m.uid!==UID && vivoTag(m.uid)).map(m=>primeiroNome(m.nome));
+  const resumo = !S.grupoM ? 'Carregando…' : vivos.length ? `🟢 ${vivos.join(' e ')} ${vivos.length>1?'estão':'está'} treinando agora` : quem.length ? `${listaNomes(quem)} ${quem.length>1?'treinaram':'treinou'} hoje` : 'Ninguém treinou hoje ainda';
+  return linhaModulo('grupo', '👥', esc(S.grupo.nome), esc(resumo), 'grupo-abrir');
+}
+function listaNomes(a){ const b = a.slice(); if(b[0]) b[0] = b[0].charAt(0).toUpperCase()+b[0].slice(1); return b.length>1 ? b.slice(0,-1).join(', ')+' e '+b[b.length-1] : b[0]; }
+
+/* 5. Pela hora do dia */
+function ordemDoDia(){
+  const ordem = INICIO.ordem.filter(i=>!INICIO.ocultos.includes(i));
+  if(!INICIO.auto) return ordem;
+  const h = new Date().getHours(), hoje = chaveDia(Date.now());
+  const sobe = [];
+  const usaSono = Object.keys(SONO.noites).length > 0;
+  if(noiteAberta() || (h >= 20 || h < 4) || (h >= 4 && h < 11 && usaSono && !noiteDe(hoje))) sobe.push('sono');
+  if(S.sessions.some(x=>chaveDia(x.start)===hoje) && aguaHoje() < metaAguaDe(hoje)) sobe.push('agua');
+  const vivos = (S.grupoM||[]).some(m=>m.uid!==UID && vivoTag(m.uid));
+  if(vivos) sobe.unshift('grupo');
+  const topo = sobe.filter(i=>ordem.includes(i));
+  return topo.concat(ordem.filter(i=>!topo.includes(i)));
+}
+function modulosHoje(semana, tiles){
+  const html = { semana: ()=>semana, agua: modAgua, sono: modSono, missoes: modMissoes, grupo: modGrupo,
+    nivel: ()=>`<div class="section">${nivelStrip()}</div>`, numeros: ()=>`<div class="section">${tiles}</div>` };
+  return ordemDoDia().map(id=>html[id]()).join('') + `<button class="mod-pers" data-a="inicio">✎ Personalizar o início</button>`;
+}
+
+/* 3. Personalizar */
+function inicioSheet(){
+  const ordem = INICIO.ordem;
+  const linhas = ordem.map((id,i)=>{ const m = MODULOS.find(x=>x.id===id), on = !INICIO.ocultos.includes(id);
+    return `<div class="pi${on?'':' off'}">
+      <span class="pi-mv"><button class="iconbtn sm" data-a="ini-mv" data-m="${id}" data-d="-1" aria-label="Subir ${esc(m.nome)}"${i===0?' disabled':''}>▲</button><button class="iconbtn sm" data-a="ini-mv" data-m="${id}" data-d="1" aria-label="Descer ${esc(m.nome)}"${i===ordem.length-1?' disabled':''}>▼</button></span>
+      <span class="pi-t"><b>${m.ico} ${esc(m.nome)}</b><small>${esc(m.desc)}</small>
+        ${m.modo && on ? `<span class="pi-modo" role="group" aria-label="Tamanho"><button class="${completo(id)?'':'on'}" data-a="ini-modo" data-m="${id}" data-v="0" aria-pressed="${!completo(id)}">Compacto</button><button class="${completo(id)?'on':''}" data-a="ini-modo" data-m="${id}" data-v="1" aria-pressed="${completo(id)}">Completo</button></span>` : ''}</span>
+      <label class="sw"><input type="checkbox" data-ini-on="${id}"${on?' checked':''} aria-label="Mostrar ${esc(m.nome)}"><i></i></label></div>`; }).join('');
+  openSheet(`<h2>✎ Personalizar o início</h2><p>Escolha o que aparece, a ordem e o tamanho de cada bloco. O treino do dia e os botões rápidos ficam sempre no topo.</p>
+    <div class="pi-list">${linhas}</div>
+    <label class="pi pi-auto"><span class="pi-t"><b>🕐 Organizar pela hora do dia</b><small>À noite e de manhã o sono sobe para o topo. Depois do treino, a água sobe se faltar beber. Se alguém da família estiver treinando, a família sobe.</small></span><span class="sw"><input type="checkbox" id="ini-auto"${INICIO.auto?' checked':''}><i></i></span></label>
+    <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="close">Pronto</button><button class="btn ghost" data-a="ini-padrao">Voltar ao padrão</button></div>`);
+}
+let inicioT = null;
+function salvarInicio(reabrir){
+  LS.set('mt.inicio.'+UID, INICIO); guardarCache(); render();
+  if(reabrir) inicioSheet();
+  clearTimeout(inicioT); inicioT = setTimeout(async ()=>{ try{ await D.salvarInicio(UID, INICIO); }catch(e){} }, 700);
+}
+function moverModulo(id, d){
+  const o = INICIO.ordem, i = o.indexOf(id), j = i + d; if(i<0 || j<0 || j>=o.length) return;
+  [o[i], o[j]] = [o[j], o[i]]; salvarInicio(true);
+  const b = document.querySelector(`[data-a=ini-mv][data-m="${id}"][data-d="${d}"]`) || document.querySelector(`[data-a=ini-mv][data-m="${id}"]:not([disabled])`); if(b) b.focus();
+}
+
+/* 6. Sininho */
+function avisosSistema(){ return [cardRetro(), cardInstalar(), cardNotif(), cardFichaVencendo()].filter(Boolean); }
+function sinoBtn(){
+  const n = avisosSistema().length;
+  return `<button class="iconbtn sino${n?' tem':''}" data-a="sino" aria-label="${n ? n+(n>1?' avisos':' aviso')+' do app' : 'Notificações'}">${ICON.bell}${n?`<b class="sino-n">${n}</b>`:''}</button>`;
+}
+function sinoSheet(){
+  const a = avisosSistema();
+  if(!a.length){ S.sino = false; notifSheet(); return; }
+  openSheet(`<h2>🔔 Avisos do app</h2><div class="sino-l">${a.join('')}</div>
+    <div class="btns" style="margin-top:8px"><button class="btn ghost" data-a="notif">Configurar notificações</button><button class="btn ghost" data-a="close">Fechar</button></div>`);
+  S.sino = true;
+}
+
 /* ----- 8. Temas ----- */
 function temasSheet(){
   const cards = TEMAS.map(t=>{ const on = TEMA===t.id;
@@ -1485,7 +1617,7 @@ async function atualizarVivo(forcar){
     S.vivo = novo;
     const depois = vivosOutros().map(v=>v.uid+v.letra).join();
     if(S.view==='sessao') atualizarVivoSessao();
-    else if(S.view==='hoje' && (antes!==depois || vivosOutros().length)) atualizarVivoHoje();
+    else if(S.view==='hoje' && (antes!==depois || vivosOutros().length)) atualizarVivoHoje(antes!==depois);
   }catch(e){}
   vivoBuscando = false;
 }
@@ -1525,7 +1657,10 @@ function atualizarVivoSessao(){
   if(S.draft) S.draft.w.ex.forEach((e,i)=>{ const el = $('#vivo-ex-'+i); if(el) el.innerHTML = vivoDoEx(e); });
   hidratarFotos();
 }
-function atualizarVivoHoje(){
+function atualizarVivoHoje(mudou){
+  if(mudou && INICIO.auto && $('#sheet').hidden){ render(); return; }
+  const mod = document.querySelector('[data-mod=grupo]');
+  if(mod){ mod.outerHTML = modGrupo(); return; }
   const card = $('#grupo-card'); if(!card) return;
   card.outerHTML = grupoCard(); hidratarFotos();
 }
@@ -2518,7 +2653,7 @@ function barChart(items, target){
 }
 
 /* ---------- Sheets e toast ---------- */
-function openSheet(html){ $('#sheet-card').innerHTML = html; $('#sheet').hidden=false; const f=$('#sheet-card button'); if(f) f.focus({preventScroll:true}); hidratarFotos(); }
+function openSheet(html){ S.sino = false; $('#sheet-card').innerHTML = html; $('#sheet').hidden=false; const f=$('#sheet-card button'); if(f) f.focus({preventScroll:true}); hidratarFotos(); }
 function closeSheet(force){ if(S.busy && !force) return; $('#sheet').hidden=true; $('#sheet-card').innerHTML=''; S.confirmDel=null; }
 let toastT=null;
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{t.hidden=true;}, 4200); }
@@ -2826,8 +2961,8 @@ async function saveBody(){
   try{
     await D.salvarPeso(UID, d, kg);
     S.body = S.body.filter(e=>e.d!==d).concat([{d, kg}]).sort((a,b)=>a.d<b.d?-1:1);
-    render(); toast('Peso registrado: '+fmtN(kg)+' kg.'); verificarMissoes();
-  }catch(e){ toast('Não consegui salvar o peso. Confira a conexão.', true); }
+    render(); toast('Peso registrado: '+fmtN(kg)+' kg.'); verificarMissoes(); return true;
+  }catch(e){ toast('Não consegui salvar o peso. Confira a conexão.', true); return false; }
 }
 
 /* ---------- Arquivos: imagens e PDF para a leitura ---------- */
@@ -3208,6 +3343,15 @@ document.addEventListener('click', async e=>{
     case 'sono-q': { const v = +t.dataset.v; S.sonoQ = S.sonoQ===v ? null : v; document.querySelectorAll('[data-a="sono-q"]').forEach(b=>{ const on = +b.dataset.v===S.sonoQ; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); break; }
     case 'sono-save': salvarSonoSheet(); break;
     case 'sono-dormir': vouDormir(); break;
+    case 'peso-rapido': pesoRapidoSheet(); break;
+    case 'peso-rapido-ok': if(await saveBody()) closeSheet(true); break;
+    case 'grupo-abrir': S.grupoAberto = true; render(); break;
+    case 'grupo-recolher': S.grupoAberto = false; render(); break;
+    case 'inicio': inicioSheet(); break;
+    case 'ini-mv': moverModulo(t.dataset.m, +t.dataset.d); break;
+    case 'ini-modo': { const id = t.dataset.m; INICIO.completos = INICIO.completos.filter(x=>x!==id); if(t.dataset.v==='1') INICIO.completos.push(id); salvarInicio(true); break; }
+    case 'ini-padrao': INICIO = JSON.parse(JSON.stringify(INICIO_PADRAO)); salvarInicio(true); toast('Início voltou ao padrão.'); break;
+    case 'sino': sinoSheet(); break;
     case 'sono-acordei': acordei(); break;
     case 'sono-madrugada': acordeiMadrugada(); break;
     case 'sono-voltei': volteiDormir(); break;
@@ -3388,6 +3532,8 @@ document.addEventListener('input', e=>{
 document.addEventListener('change', e=>{
   const el = e.target, id = el.id;
   if(el.tagName==='SELECT' && el.dataset.e && S.edit){ setPath(S.edit, el.dataset.e, el.value); return; }
+  if(el.dataset.iniOn){ const k = el.dataset.iniOn; INICIO.ocultos = INICIO.ocultos.filter(x=>x!==k); if(!el.checked) INICIO.ocultos.push(k); salvarInicio(true); return; }
+  if(id==='ini-auto'){ INICIO.auto = el.checked; salvarInicio(true); return; }
   if(id==='exsel'){ S.exSel = el.value; render(); }
   else if(id==='msel'){ S.mSel = el.value; render(); }
   else if(id==='cmp-a'){ S.cmp.a = el.value; render(); }
@@ -3434,6 +3580,7 @@ async function carregar(silencioso){
     MISSOES = Array.isArray(d.missoes) ? d.missoes : [];
     AGUA = { dias: Object.assign({}, d.agua || {}, LS.get('mt.agua.pend.'+UID, {})), manual: d.aguaMeta || null };
     TEMA = d.tema || LS.get('mt.tema.'+UID, 'neon') || 'neon';
+    INICIO = normalizarInicio(d.inicio || LS.get('mt.inicio.'+UID, null));
     { const pend = LS.get('mt.sono.pend.'+UID, {}), noites = Object.assign({}, d.sono || {});
       Object.entries(pend).forEach(([k,v])=>{ if(v) noites[k] = v; else delete noites[k]; });
       SONO = { noites, meta: d.sonoMeta || null, acordar: d.sonoAcordar || '' }; COCHILOS = Array.isArray(d.cochilos) ? d.cochilos : []; }
@@ -3481,7 +3628,7 @@ function guardarCache(){
   const c = LS.get(kDados(), null); if(!c) return;
   const pend = new Set(S.pending.map(p=>p.id));
   Object.assign(c, { treinos:S.sessions.filter(x=>!pend.has(x.id)), peso:S.body, avaliacoes:S.measures, fotos:S.photos, fichas:FICHAS, nome:NOME, avatar:AVATAR, instagram:INSTA,
-    missoes:MISSOES, tema:TEMA, agua:AGUA.dias, aguaMeta:AGUA.manual, sono:SONO.noites, sonoMeta:SONO.meta, sonoAcordar:SONO.acordar, cochilos:COCHILOS,
+    missoes:MISSOES, tema:TEMA, agua:AGUA.dias, aguaMeta:AGUA.manual, sono:SONO.noites, sonoMeta:SONO.meta, sonoAcordar:SONO.acordar, cochilos:COCHILOS, inicio:INICIO,
     videos:Object.entries(VIDEOS).map(([chave,v])=>({chave, nome:v.nome, video:v.video})) });
   LS.set(kDados(), c);
 }

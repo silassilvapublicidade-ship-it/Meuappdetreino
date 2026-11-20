@@ -456,3 +456,36 @@ export async function desenharRetrospectiva(d){
   perfil(x, d, 1610);
   return c;
 }
+
+/* ---------- minha evolução (mês) ---------- */
+export async function desenharEvolucao(d){
+  await fontes();
+  const [c, x] = base();
+  equipamento(x);
+  marca(x, d.data);
+  rotulo(x, 'MINHA EVOLUÇÃO · ' + MESES[d.mes].toUpperCase(), 400);
+  x.textAlign = 'left'; x.font = `400 230px ${DISPLAY}`; x.fillStyle = COR.ink; x.fillText('FORÇA', 72, 610);
+  const sub = d.dIndice != null ? (d.dIndice >= 0 ? '+' : '') + String(d.dIndice).replace('.', ',') + '% EM 30 DIAS' : d.indice != null ? 'ÍNDICE ' + String(d.indice).replace('.', ',') : 'NO FOCO';
+  let fs = 120; x.font = `400 ${fs}px ${DISPLAY}`; while(x.measureText(sub).width > W-160 && fs > 70){ fs -= 6; x.font = `400 ${fs}px ${DISPLAY}`; }
+  x.save(); x.shadowColor = 'rgba(67,227,173,.5)'; x.shadowBlur = 30; x.fillStyle = gradTxt(x, 630, 740); x.fillText(sub, 76, 732); x.restore();
+  const ton = d.ton >= 10 ? Math.round(d.ton) : Math.round(d.ton*10)/10;
+  stats(x, [[String(d.treinos), d.treinos===1?'TREINO NO MÊS':'TREINOS NO MÊS'], [String(ton).replace('.', ',')+' t', 'LEVANTADAS'], [String(d.recordes), d.recordes===1?'RECORDE':'RECORDES']], 790);
+  rotulo(x, d.subiu.length ? 'O QUE MAIS SUBIU' : 'CONSTÂNCIA', 1090, COR.cyan);
+  if(d.subiu.length){
+    d.subiu.forEach((s, i)=>{
+      const t = 1130 + i*120;
+      painel(x, 80, t, W-160, 100);
+      let nome = String(s.nome).toUpperCase(); x.font = `800 30px ${BODY}`; x.textAlign = 'left';
+      while(x.measureText(nome).width > 520 && nome.length > 4) nome = nome.slice(0,-2) + '…';
+      x.fillStyle = COR.ink; x.fillText(nome, 112, t + 62);
+      x.textAlign = 'right'; x.font = `400 60px ${DISPLAY}`; x.fillStyle = COR.mint;
+      const fmt = v => String(Math.round(v*10)/10).replace('.', ',');
+      x.fillText(`${fmt(s.de)} → ${fmt(s.para)} KG`, W-112, t + 72);
+    });
+  } else {
+    x.textAlign = 'left'; x.font = `700 40px ${BODY}`; x.fillStyle = COR.muted;
+    x.fillText(d.peso != null ? `Peso: ${d.peso>0?'+':''}${String(d.peso).replace('.', ',')} kg em 30 dias` : 'Um treino de cada vez.', 80, 1190);
+  }
+  perfil(x, d, 1592);
+  return c;
+}

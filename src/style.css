@@ -944,3 +944,6 @@ button.day:active{transform:scale(.96)}
 .mm-leg i:first-child{margin-left:0}
 .mm-leg .l0{background:#22343c} .mm-leg .l1{background:#ffb648} .mm-leg .l2{background:var(--mint)} .mm-leg .l3{background:var(--cyan)}
 .cmp img{-webkit-user-drag:none;pointer-events:none}
+.fchips.wrap{flex-wrap:wrap;overflow:visible}
+.sn-modo{display:block;margin-top:8px;font-size:13px}
+.tl-p.ap{background:repeating-linear-gradient(90deg,#ffb648 0 3px,transparent 3px 5px)}

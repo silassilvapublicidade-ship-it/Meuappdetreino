@@ -219,7 +219,7 @@ export async function salvarAgua(uid, dias){
 
 export async function salvarSono(uid, dia, n){
   if(!n){ ok(await sb.from('sono').delete().eq('user_id', uid).eq('dia', dia)); return; }
-  ok(await sb.from('sono').upsert({ user_id: uid, dia, dormiu: new Date(n.dormiu).toISOString(), acordou: new Date(n.acordou).toISOString(), qualidade: n.q || null, obs: n.obs || null, pausas: (n.pausas || []).map(p => ({ ini: new Date(p.ini).toISOString(), fim: new Date(p.fim).toISOString() })), updated_at: new Date().toISOString() }, { onConflict: 'user_id,dia' }));
+  ok(await sb.from('sono').upsert({ user_id: uid, dia, dormiu: new Date(n.dormiu).toISOString(), acordou: new Date(n.acordou).toISOString(), qualidade: n.q || null, obs: n.obs || null, pausas: (n.pausas || []).map(p => Object.assign({ ini: new Date(p.ini).toISOString(), fim: new Date(p.fim).toISOString() }, p.aprox ? { aprox: true } : {})), updated_at: new Date().toISOString() }, { onConflict: 'user_id,dia' }));
 }
 export async function salvarInicio(uid, inicio){ ok(await sb.from('profiles').update({ inicio }).eq('id', uid)); }
 export async function salvarSonoAcordar(uid, hhmm){ ok(await sb.from('profiles').update({ sono_acordar: hhmm || null }).eq('id', uid)); }

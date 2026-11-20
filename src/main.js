@@ -1077,7 +1077,32 @@ function linhaPausa(ini, fim){
     <label><span>Voltei a dormir</span><input class="inp" type="time" data-pz="fim" value="${fim||''}"></label>
     <button class="chipbtn ghost" data-a="sono-pz-del" aria-label="Remover este despertar">✕</button></div>`;
 }
+const PZ_MIN = [10,20,30,45,60,90,120,180];
+function pausasSimples(noite, vezes, min){
+  const n = Math.max(1, vezes), cama = noite.acordou - noite.dormiu, passo = cama / (n+1), dur = min*60000 / n;
+  return Array.from({length:n}, (_,i)=>{ const meio = noite.dormiu + passo*(i+1); return { ini: Math.round(meio - dur/2), fim: Math.round(meio + dur/2), aprox: true }; });
+}
+function blocoPausas(){
+  const z = S.snPz;
+  if(z.exato) return `<div id="sn-pausas">${z.linhas.map(([a,b])=>linhaPausa(a,b)).join('')}</div>
+    <button class="chipbtn" data-a="sono-pz-add" style="margin-top:4px">+ Outro despertar</button>
+    <button class="link sn-modo" data-a="sn-simples">← Voltar ao jeito simples</button>`;
+  const ch = (act, v, txt, on) => `<button class="fchip${on?' on':''}" data-a="${act}" data-v="${v}" aria-pressed="${on}">${txt}</button>`;
+  return `<div class="fchips wrap">${[[0,'Não'],[1,'1 vez'],[2,'2 vezes'],[3,'3 ou mais']].map(([v,t])=>ch('sn-vezes', v, t, z.vezes===v)).join('')}</div>
+    ${z.vezes ? `<p class="lbl" style="margin-top:10px">Quanto tempo ficou acordado, somando tudo?</p>
+      <div class="fchips wrap">${PZ_MIN.map(v=>ch('sn-min', v, v<60?v+' min':durTxt(v), z.min===v)).join('')}</div>
+      <button class="link sn-modo" data-a="sn-exato">Prefiro colocar os horários exatos</button>` : ''}`;
+}
+function atualizarPausasUI(){ const b = $('#sn-pz-box'); if(b) b.innerHTML = blocoPausas(); atualizarTotalSono(); }
+function noiteDoForm(){ const hd = $('#sn-dormiu').value, ha = $('#sn-acordou').value; return hd && ha ? montarNoite($('#sn-dia').value || chaveDia(Date.now()), hd, ha) : null; }
+function lerLinhasPausa(){ return [...document.querySelectorAll('#sn-pausas .sn-pr')].map(r=>[r.querySelector('[data-pz=ini]').value, r.querySelector('[data-pz=fim]').value]); }
 function lerPausas(noite){
+  const z = S.snPz;
+  if(z && !z.exato){
+    if(!z.vezes) return { pausas: [] };
+    if(z.min >= naCama(noite) - 30) return { erro: 'O tempo acordado ficou maior que a noite. Confira os horários.' };
+    return { pausas: pausasSimples(noite, z.vezes, z.min) };
+  }
   const out = [];
   for(const r of document.querySelectorAll('#sn-pausas .sn-pr')){
     const a = r.querySelector('[data-pz=ini]').value, b = r.querySelector('[data-pz=fim]').value;
@@ -1105,6 +1130,10 @@ function sonoRegSheet(dk, pre){
   S.sonoQ = n && n.q || null;
   const hd = pre && pre.dormiu ? pre.dormiu : n ? horaDe(n.dormiu) : u ? horaDe(u.dormiu) : '23:00';
   const ha = n ? horaDe(n.acordou) : u ? horaDe(u.acordou) : '07:00';
+  const pz = n && n.pausas || [];
+  S.snPz = !pz.length ? { vezes:0, min:30, exato:false, linhas:[] }
+    : pz.every(p=>p.aprox) ? { vezes:Math.min(3, pz.length), min: PZ_MIN.reduce((a,b)=>Math.abs(b-acordado(n))<Math.abs(a-acordado(n))?b:a), exato:false, linhas:[] }
+    : { vezes:pz.length, min:30, exato:true, linhas: pz.map(p=>[horaDe(p.ini), horaDe(p.fim)]) };
   openSheet(`<h2>${n?'Editar noite':'Registrar sono'}</h2><p>Coloque a hora em que dormiu e a hora em que acordou.</p>
     <div class="fgrid cd sn-f">
       <label><span>Acordei no dia</span><input class="inp" id="sn-dia" type="date" value="${dk}" max="${chaveDia(Date.now())}"></label>
@@ -1112,9 +1141,8 @@ function sonoRegSheet(dk, pre){
       <label><span>Acordei às</span><input class="inp" id="sn-acordou" type="time" value="${ha}"></label>
       <label><span>Sono real</span><output class="inp sn-tot" id="sn-tot"></output></label></div>
     <p class="note" id="sn-tot-det" style="margin-top:6px"></p>
-    <p class="lbl" style="margin-top:12px">Acordou durante a noite? <small class="ag-leg">(opcional)</small></p>
-    <div id="sn-pausas">${(n && n.pausas || []).map(p=>linhaPausa(horaDe(p.ini), horaDe(p.fim))).join('')}</div>
-    <button class="chipbtn" data-a="sono-pz-add" style="margin-top:4px">+ Acordei e voltei a dormir</button>
+    <p class="lbl" style="margin-top:12px">Acordou durante a noite?</p>
+    <div id="sn-pz-box">${blocoPausas()}</div>
     <p class="lbl" style="margin-top:14px">Como foi a noite? <small class="ag-leg">(opcional)</small></p>
     <div class="sn-q">${QUALIDADE.map(([v,e,l])=>`<button class="int-b${S.sonoQ===v?' on':''}" data-a="sono-q" data-v="${v}" aria-pressed="${S.sonoQ===v}"><b style="font-size:22px">${e}</b><small>${l}</small></button>`).join('')}</div>
     <textarea class="notes sm" id="sn-obs" maxlength="300" placeholder="Observação (opcional): acordou de madrugada, café tarde…">${esc(n && n.obs || '')}</textarea>
@@ -1285,7 +1313,7 @@ function linhaDoTempo(dias){
   const linhas = Array.from({length:dias}, (_,j)=>{
     const t = diaMenos(dias-1-j), dk = chaveDia(t.getTime()), n = noiteDe(dk);
     const base = new Date(t.getFullYear(), t.getMonth(), t.getDate()-1, 20, 0).getTime();
-    const barra = n ? `<i class="tl-b" style="left:${pos(new Date(n.dormiu).getTime(), base)}%;width:${pos(new Date(n.acordou).getTime(), base)-pos(new Date(n.dormiu).getTime(), base)}%"></i>${(n.pausas||[]).map(p=>`<i class="tl-p" style="left:${pos(new Date(p.ini).getTime(), base)}%;width:${Math.max(0.8, pos(new Date(p.fim).getTime(), base)-pos(new Date(p.ini).getTime(), base))}%"></i>`).join('')}` : '';
+    const barra = n ? `<i class="tl-b" style="left:${pos(new Date(n.dormiu).getTime(), base)}%;width:${pos(new Date(n.acordou).getTime(), base)-pos(new Date(n.dormiu).getTime(), base)}%"></i>${(n.pausas||[]).map(p=>`<i class="tl-p${p.aprox?' ap':''}" style="left:${pos(new Date(p.ini).getTime(), base)}%;width:${Math.max(0.8, pos(new Date(p.fim).getTime(), base)-pos(new Date(p.ini).getTime(), base))}%"></i>`).join('')}` : '';
     const cochs = COCHILOS.filter(c=>c.dia===dk).map(c=>`<i class="tl-c" style="left:${pos(new Date(c.ini).getTime(), base)}%;width:${Math.max(0.8, pos(new Date(c.fim).getTime(), base)-pos(new Date(c.ini).getTime(), base))}%"></i>`).join('');
     return `<button class="tl-r" data-a="sono-reg" data-d="${dk}" aria-label="${fmtDate(t.getTime())}: ${n?horaDe(n.dormiu)+' às '+horaDe(n.acordou):'sem registro'}"><span class="tl-d">${WD[t.getDay()]} ${t.getDate()}</span><span class="tl-t">${barra}${cochs}</span><span class="tl-v">${n?durTxt(duracao(n)):''}</span></button>`;
   }).join('');
@@ -3567,6 +3595,13 @@ document.addEventListener('click', async e=>{
     case 'cochilo-del': apagarCochilo(t.dataset.id); break;
     case 'sono-pz-add': { const box = $('#sn-pausas'); if(box && box.children.length < 10){ box.insertAdjacentHTML('beforeend', linhaPausa('','')); const ins = box.lastElementChild.querySelector('input'); if(ins) ins.focus(); } break; }
     case 'sono-pz-del': { const r = t.closest('.sn-pr'); if(r) r.remove(); atualizarTotalSono(); break; }
+    case 'sn-vezes': S.snPz.vezes = +t.dataset.v; atualizarPausasUI(); break;
+    case 'sn-min': S.snPz.min = +t.dataset.v; atualizarPausasUI(); break;
+    case 'sn-exato': { const n = noiteDoForm(); S.snPz.exato = true; S.snPz.linhas = n && S.snPz.vezes ? pausasSimples(n, S.snPz.vezes, S.snPz.min).map(p=>[horaDe(p.ini), horaDe(p.fim)]) : [['','']]; atualizarPausasUI(); break; }
+    case 'sn-simples': { const n = noiteDoForm(); S.snPz.linhas = lerLinhasPausa(); let r = n ? (S.snPz.exato = true, lerPausas(n)) : { pausas: [] };
+      S.snPz.exato = false;
+      if(r.pausas && r.pausas.length){ const tot = r.pausas.reduce((s,p)=>s+(p.fim-p.ini)/60000,0); S.snPz.vezes = Math.min(3, r.pausas.length); S.snPz.min = PZ_MIN.reduce((a,b)=>Math.abs(b-tot)<Math.abs(a-tot)?b:a); }
+      atualizarPausasUI(); break; }
     case 'sono-del': apagarSono(t.dataset.d); break;
     case 'sono-meta': salvarMetaSono(); break;
     case 'agua+': addAgua(+t.dataset.ml); break;

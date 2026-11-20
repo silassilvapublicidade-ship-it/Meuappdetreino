@@ -49,7 +49,7 @@ export async function carregarTudo(uid){
     sb.from('app_avisos').select('id,texto,nivel,ativo,expira_em,created_at').order('created_at', { ascending: false }).then(ok),
     sb.from('exercise_catalog').select('modulo,titulo,youtube').order('modulo').order('id').range(0, 2999).then(ok).catch(() => []),
     sb.from('agua').select('dia,ml').eq('user_id', uid).gte('dia', desde).then(ok).catch(() => []),
-    sb.from('sono').select('dia,dormiu,acordou,qualidade,obs').eq('user_id', uid).gte('dia', new Date(Date.now() - 400*864e5).toISOString().slice(0,10)).then(ok).catch(() => [])
+    sb.from('sono').select('dia,dormiu,acordou,qualidade,obs,pausas').eq('user_id', uid).gte('dia', new Date(Date.now() - 400*864e5).toISOString().slice(0,10)).then(ok).catch(() => [])
   ]);
   return {
     nome: perfil && perfil.nome || '',
@@ -60,7 +60,7 @@ export async function carregarTudo(uid){
     tema: perfil && perfil.tema || '',
     aguaMeta: perfil && perfil.agua_meta || null,
     agua: Object.fromEntries((agua || []).map(a => [a.dia, a.ml])),
-    sono: Object.fromEntries((sono || []).map(n => [n.dia, { dormiu: n.dormiu, acordou: n.acordou, q: n.qualidade || null, obs: n.obs || '' }])),
+    sono: Object.fromEntries((sono || []).map(n => [n.dia, { dormiu: n.dormiu, acordou: n.acordou, q: n.qualidade || null, obs: n.obs || '', pausas: Array.isArray(n.pausas) ? n.pausas : [] }])),
     sonoMeta: perfil && perfil.sono_meta || null,
     lembreteHora: perfil && perfil.lembrete_hora ? String(perfil.lembrete_hora).slice(0,5) : '',
     metas: { peso: perfil && perfil.meta_peso != null ? Number(perfil.meta_peso) : null, gordura: perfil && perfil.meta_gordura != null ? Number(perfil.meta_gordura) : null, data: perfil && perfil.meta_data || null },
@@ -215,7 +215,7 @@ export async function salvarAgua(uid, dias){
 
 export async function salvarSono(uid, dia, n){
   if(!n){ ok(await sb.from('sono').delete().eq('user_id', uid).eq('dia', dia)); return; }
-  ok(await sb.from('sono').upsert({ user_id: uid, dia, dormiu: new Date(n.dormiu).toISOString(), acordou: new Date(n.acordou).toISOString(), qualidade: n.q || null, obs: n.obs || null, updated_at: new Date().toISOString() }, { onConflict: 'user_id,dia' }));
+  ok(await sb.from('sono').upsert({ user_id: uid, dia, dormiu: new Date(n.dormiu).toISOString(), acordou: new Date(n.acordou).toISOString(), qualidade: n.q || null, obs: n.obs || null, pausas: (n.pausas || []).map(p => ({ ini: new Date(p.ini).toISOString(), fim: new Date(p.fim).toISOString() })), updated_at: new Date().toISOString() }, { onConflict: 'user_id,dia' }));
 }
 export async function salvarMetaSono(uid, min){ ok(await sb.from('profiles').update({ sono_meta: min || null }).eq('id', uid)); }
 

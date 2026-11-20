@@ -12,7 +12,7 @@ import {
 import { calcular as calcConquistas, nivel, semanasAtivas, chaveDia, NIVEIS } from './conquistas.js';
 import { prepararCatalogo, acharNoCatalogo, GRUPOS } from './catalogo.js';
 import { tecnicasDe, tecnica, TECNICAS } from './tecnicas.js';
-import { QUALIDADE, duracao, durTxt, horaDe, horaTxt, estatisticas, dicas } from './sono.js';
+import { QUALIDADE, duracao, naCama, acordado, durTxt, horaDe, horaTxt, estatisticas, dicas } from './sono.js';
 import { sequencia, missoesDaSemana, TEMAS, aplicarTema, metaAgua, litros } from './engaja.js';
 import { suportaPush, ehIOS, instalado as pwaInstalado, permissao, assinaturaAtual, assinar, cancelar as cancelarPush } from './push.js';
 import * as D from './dados.js';
@@ -1053,7 +1053,7 @@ function cardSono(){
   const barras = Array.from({length:7}, (_,j)=>{ const t = diaMenos(6-j), dk = chaveDia(t.getTime()), x = noiteDe(dk), m = x ? duracao(x) : 0;
     return `<span class="sn-c${m && m>=meta-15?' ok':''}${dk===hoje?' hj':''}"><span class="sn-t"><i style="height:${Math.min(100, Math.round(m/600*100))}%"></i></span><small>${WD[t.getDay()]}</small></span>`; }).join('');
   const topo = n
-    ? `<p class="sn-v"><b>${durTxt(duracao(n))}</b> esta noite · ${horaDe(n.dormiu)} → ${horaDe(n.acordou)}${n.q?' '+QUALIDADE[n.q-1][1]:''}</p>`
+    ? `<p class="sn-v"><b>${durTxt(duracao(n))}</b> de sono esta noite · ${horaDe(n.dormiu)} → ${horaDe(n.acordou)}${n.q?' '+QUALIDADE[n.q-1][1]:''}${acordado(n)?`<br><span class="sn-pz">🌗 ${(n.pausas||[]).length===1?'acordou 1 vez':'acordou '+n.pausas.length+' vezes'} · ${durTxt(acordado(n))} acordado</span>`:''}</p>`
     : `<p class="sn-v">Como foi a noite? Registre a hora que dormiu e que acordou.</p>`;
   return `<div class="section"><div class="sono">
     <div class="card-h" style="margin:0"><h2 class="h2" style="margin:0">🌙 Sono</h2><button class="link" data-a="sono">semana e mês</button></div>
@@ -1070,9 +1070,35 @@ function montarNoite(dk, hDormiu, hAcordou){
   if(dormiu >= acordou) dormiu.setDate(dormiu.getDate()-1);
   return { dormiu: dormiu.getTime(), acordou: acordou.getTime() };
 }
+// encaixa um horário (hh:mm) dentro da noite [dormiu, acordou]
+function horarioNaNoite(noite, hhmm){
+  const [h,m] = hhmm.split(':').map(Number), base = new Date(noite.dormiu);
+  for(let k=0;k<2;k++){ const d = new Date(base.getFullYear(), base.getMonth(), base.getDate()+k, h, m); if(d.getTime() >= noite.dormiu && d.getTime() <= noite.acordou) return d.getTime(); }
+  return null;
+}
+function linhaPausa(ini, fim){
+  return `<div class="sn-pr"><label><span>Acordei às</span><input class="inp" type="time" data-pz="ini" value="${ini||''}"></label>
+    <label><span>Voltei a dormir</span><input class="inp" type="time" data-pz="fim" value="${fim||''}"></label>
+    <button class="chipbtn ghost" data-a="sono-pz-del" aria-label="Remover este despertar">✕</button></div>`;
+}
+function lerPausas(noite){
+  const out = [];
+  for(const r of document.querySelectorAll('#sn-pausas .sn-pr')){
+    const a = r.querySelector('[data-pz=ini]').value, b = r.querySelector('[data-pz=fim]').value;
+    if(!a && !b) continue;
+    if(!a || !b) return { erro: 'Preencha os dois horários de cada despertar.' };
+    const ini = horarioNaNoite(noite, a), fim = horarioNaNoite(noite, b);
+    if(ini==null || fim==null) return { erro: 'Os despertares precisam ficar entre a hora que dormiu e a que acordou.' };
+    if(fim <= ini) return { erro: 'Em cada despertar, "voltei a dormir" precisa ser depois de "acordei".' };
+    out.push({ ini, fim });
+  }
+  out.sort((x,y)=>x.ini-y.ini);
+  for(let i=1;i<out.length;i++) if(out[i].ini < out[i-1].fim) return { erro: 'Dois despertares estão se sobrepondo.' };
+  return { pausas: out };
+}
 async function sonoIgualUltima(){
   const u = ultimaNoite(); if(!u) return;
-  const dk = chaveDia(Date.now()), n = Object.assign(montarNoite(dk, horaDe(u.dormiu), horaDe(u.acordou)), { q: null, obs: '' });
+  const dk = chaveDia(Date.now()), n = Object.assign(montarNoite(dk, horaDe(u.dormiu), horaDe(u.acordou)), { q: null, obs: '', pausas: [] });
   const ok = await gravarSono(dk, n);
   toast(`Sono registrado: ${durTxt(duracao(n))}${ok?'':' (vai para a nuvem quando tiver internet)'}.`);
   render(); verificarMissoes();
@@ -1088,8 +1114,12 @@ function sonoRegSheet(dk){
       <label><span>Acordei no dia</span><input class="inp" id="sn-dia" type="date" value="${dk}" max="${chaveDia(Date.now())}"></label>
       <label><span>Dormi às</span><input class="inp" id="sn-dormiu" type="time" value="${hd}"></label>
       <label><span>Acordei às</span><input class="inp" id="sn-acordou" type="time" value="${ha}"></label>
-      <label><span>Total</span><output class="inp sn-tot" id="sn-tot"></output></label></div>
-    <p class="lbl" style="margin-top:12px">Como foi a noite? <small class="ag-leg">(opcional)</small></p>
+      <label><span>Sono real</span><output class="inp sn-tot" id="sn-tot"></output></label></div>
+    <p class="note" id="sn-tot-det" style="margin-top:6px"></p>
+    <p class="lbl" style="margin-top:12px">Acordou durante a noite? <small class="ag-leg">(opcional)</small></p>
+    <div id="sn-pausas">${(n && n.pausas || []).map(p=>linhaPausa(horaDe(p.ini), horaDe(p.fim))).join('')}</div>
+    <button class="chipbtn" data-a="sono-pz-add" style="margin-top:4px">+ Acordei e voltei a dormir</button>
+    <p class="lbl" style="margin-top:14px">Como foi a noite? <small class="ag-leg">(opcional)</small></p>
     <div class="sn-q">${QUALIDADE.map(([v,e,l])=>`<button class="int-b${S.sonoQ===v?' on':''}" data-a="sono-q" data-v="${v}" aria-pressed="${S.sonoQ===v}"><b style="font-size:22px">${e}</b><small>${l}</small></button>`).join('')}</div>
     <textarea class="notes sm" id="sn-obs" maxlength="300" placeholder="Observação (opcional): acordou de madrugada, café tarde…">${esc(n && n.obs || '')}</textarea>
     <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="sono-save">Salvar</button>
@@ -1101,17 +1131,23 @@ function atualizarTotalSono(){
   const hd = $('#sn-dormiu').value, ha = $('#sn-acordou').value;
   if(!hd || !ha){ o.textContent = '—'; return; }
   const n = montarNoite($('#sn-dia').value || chaveDia(Date.now()), hd, ha);
+  const r = lerPausas(n), det = $('#sn-tot-det');
+  if(r.erro){ o.textContent = durTxt(naCama(n)); if(det) det.textContent = r.erro; return; }
+  n.pausas = r.pausas;
   o.textContent = durTxt(duracao(n));
+  if(det) det.innerHTML = acordado(n) ? `${durTxt(naCama(n))} na cama − ${durTxt(acordado(n))} acordado = <b>${durTxt(duracao(n))} de sono</b>` : '';
 }
 async function salvarSonoSheet(){
   const dk = $('#sn-dia').value || chaveDia(Date.now()), hd = $('#sn-dormiu').value, ha = $('#sn-acordou').value;
   if(!hd || !ha){ toast('Preencha os dois horários.', true); return; }
   const n = Object.assign(montarNoite(dk, hd, ha), { q: S.sonoQ || null, obs: ($('#sn-obs').value||'').trim() });
+  const r = lerPausas(n); if(r.erro){ toast(r.erro, true); return; }
+  n.pausas = r.pausas;
   const min = duracao(n);
-  if(min < 60 || min > 16*60){ toast('Confira os horários: a noite ficou com '+durTxt(min)+'.', true); return; }
+  if(naCama(n) < 60 || naCama(n) > 16*60 || min < 30){ toast('Confira os horários: a noite ficou com '+durTxt(min)+'.', true); return; }
   const ok = await gravarSono(dk, n);
   closeSheet(true); render();
-  toast(`Sono salvo: ${durTxt(min)}${ok?'':' (vai para a nuvem quando tiver internet)'}.`);
+  toast(`Sono salvo: ${durTxt(min)} de sono real${acordado(n)?' ('+durTxt(acordado(n))+' acordado)':''}${ok?'':' — vai para a nuvem quando tiver internet'}.`);
   if(min >= metaSono() - 15) setTimeout(()=>{ festa('😴', 'Meta de sono batida!', durTxt(min)+' de descanso. Recuperação em dia.'); }, 300);
   verificarMissoes();
 }
@@ -1129,11 +1165,12 @@ function sonoSheet(){
   const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dlt">${sub}</div>`:''}</div>`;
   const resumo = st.n ? `<div class="sum">${tile('Média', durTxt(st.media), (st.media>=meta-15?'✓ na meta':'meta '+durTxt(meta)))}${tile('Dormir', horaTxt(st.dormir), '±'+Math.round(st.desvio)+' min')}${tile('Acordar', horaTxt(st.acordar), '')}</div>
     <div class="sum">${tile('Na meta', st.metaOk+'<small>/'+st.n+'</small>', 'noites')}${tile('Débito', durTxt(st.debito), aba==='semana'?'na semana':'no mês')}${tile('Qualidade', st.qualidade?QUALIDADE[Math.round(st.qualidade)-1][1]:'—', st.qualidade?QUALIDADE[Math.round(st.qualidade)-1][2]:'')}</div>
+    ${st.despertares?`<p class="note">🌗 Acordou no meio da noite em <b>${st.despertares}</b> ${st.despertares===1?'noite':'noites'}, em média <b>${durTxt(st.acordadoMedio)}</b> acordado. Eficiência do sono: <b>${st.eficiencia}%</b> do tempo na cama dormindo.</p>`:''}
     <p class="note">Melhor noite: <b>${durTxt(st.melhor.min)}</b> (${fmtDate(new Date(st.melhor.acordou).getTime())}) · Pior: <b>${durTxt(st.pior.min)}</b> (${fmtDate(new Date(st.pior.acordou).getTime())})${st.curtas?` · ${st.curtas} ${st.curtas===1?'noite':'noites'} com menos de 6h`:''}</p>`
     : `<p class="note">Nenhuma noite registrada ${aba==='semana'?'nos últimos 7 dias':'nos últimos 30 dias'}.</p>`;
   const dc = dicas(SONO.noites, meta, Date.now(), S.sessions).map(([i,t])=>`<li><span aria-hidden="true">${i}</span><p>${t}</p></li>`).join('');
   const hist = Object.keys(SONO.noites).sort().reverse().slice(0, 30).map(dk=>{ const n = SONO.noites[dk], m = duracao(n);
-    return `<button class="sn-h" data-a="sono-reg" data-d="${dk}"><span class="sn-hd">${esc(fmtDate(new Date(n.acordou).getTime()))}</span><span>${horaDe(n.dormiu)} → ${horaDe(n.acordou)}</span><b class="${m>=meta-15?'ok':m<360?'baixo':''}">${durTxt(m)}</b><span>${n.q?QUALIDADE[n.q-1][1]:''}</span></button>`; }).join('');
+    return `<button class="sn-h" data-a="sono-reg" data-d="${dk}"><span class="sn-hd">${esc(fmtDate(new Date(n.acordou).getTime()))}</span><span>${horaDe(n.dormiu)} → ${horaDe(n.acordou)}</span><b class="${m>=meta-15?'ok':m<360?'baixo':''}">${durTxt(m)}</b><span>${(n.pausas||[]).length?'🌗':''}${n.q?QUALIDADE[n.q-1][1]:''}</span></button>`; }).join('');
   openSheet(`<div id="sn-sheet"><h2>🌙 Sono</h2>
     <div class="seg two" role="tablist"><button data-a="sono-aba" data-t="semana" role="tab" aria-selected="${aba==='semana'}">Semana</button><button data-a="sono-aba" data-t="mes" role="tab" aria-selected="${aba==='mes'}">Mês</button></div>
     <div class="sn-graf ${aba}" aria-label="Horas de sono por noite">${barras}</div>
@@ -3005,6 +3042,8 @@ document.addEventListener('click', async e=>{
     case 'sono-igual': sonoIgualUltima(); break;
     case 'sono-q': { const v = +t.dataset.v; S.sonoQ = S.sonoQ===v ? null : v; document.querySelectorAll('[data-a="sono-q"]').forEach(b=>{ const on = +b.dataset.v===S.sonoQ; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); break; }
     case 'sono-save': salvarSonoSheet(); break;
+    case 'sono-pz-add': { const box = $('#sn-pausas'); if(box && box.children.length < 10){ box.insertAdjacentHTML('beforeend', linhaPausa('','')); const ins = box.lastElementChild.querySelector('input'); if(ins) ins.focus(); } break; }
+    case 'sono-pz-del': { const r = t.closest('.sn-pr'); if(r) r.remove(); atualizarTotalSono(); break; }
     case 'sono-del': apagarSono(t.dataset.d); break;
     case 'sono-meta': salvarMetaSono(); break;
     case 'agua+': addAgua(+t.dataset.ml); break;
@@ -3158,7 +3197,7 @@ document.addEventListener('input', e=>{
   const el = e.target;
   if(el.id==='bib-q'){ filtrarBiblioteca(); return; }
   if(el.id==='cd-min'){ estimarCardio(); return; }
-  if(el.id==='sn-dormiu' || el.id==='sn-acordou' || el.id==='sn-dia'){ atualizarTotalSono(); return; }
+  if(el.id==='sn-dormiu' || el.id==='sn-acordou' || el.id==='sn-dia' || (el.dataset && el.dataset.pz)){ atualizarTotalSono(); return; }
   if(el.dataset && el.dataset.he && S.editS){ editarCampoTreino(el); return; }
   if(el.id==='cmp-range'){ const v=+el.value; const a=$('#cmp-img-a'), d=$('#cmp-div'); if(a) a.style.clipPath='inset(0 '+(100-v)+'% 0 0)'; if(d) d.style.left=v+'%'; return; }
   if(el.dataset && el.dataset.e && S.edit && el.tagName!=='SELECT'){ editInput(el); return; }

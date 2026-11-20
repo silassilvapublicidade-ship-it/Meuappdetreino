@@ -3,7 +3,11 @@ import { chaveDia } from './conquistas.js';
 
 export const QUALIDADE = [[1,'😫','Péssima'],[2,'😕','Ruim'],[3,'😐','Ok'],[4,'🙂','Boa'],[5,'😴','Ótima']];
 
-export function duracao(n){ return Math.max(0, Math.round((new Date(n.acordou) - new Date(n.dormiu)) / 60000)); }
+// tempo na cama (de dormir a acordar) e tempo acordado no meio da noite
+export function naCama(n){ return Math.max(0, Math.round((new Date(n.acordou) - new Date(n.dormiu)) / 60000)); }
+export function acordado(n){ return (n.pausas || []).reduce((s,p)=>s + Math.max(0, Math.round((new Date(p.fim) - new Date(p.ini)) / 60000)), 0); }
+// sono real = na cama − despertares
+export function duracao(n){ return Math.max(0, naCama(n) - acordado(n)); }
 function minutos(ts){ const d = new Date(ts); return d.getHours()*60 + d.getMinutes(); }
 // horário de dormir medido a partir do meio-dia, para a média não quebrar na meia-noite
 function minDormir(ts){ const m = minutos(ts); return m < 12*60 ? m + 1440 : m; }
@@ -28,7 +32,10 @@ export function estatisticas(noites, meta, desde, ate){
     curtas: lista.filter(x=>x.min < 360).length,
     metaOk: lista.filter(x=>x.min >= meta - 15).length,
     melhor: lista.reduce((a,b)=>b.min>a.min?b:a), pior: lista.reduce((a,b)=>b.min<a.min?b:a),
-    qualidade: qs.length ? media(qs) : null
+    qualidade: qs.length ? media(qs) : null,
+    despertares: lista.filter(x=>(x.pausas||[]).length).length,
+    acordadoMedio: media(lista.filter(x=>(x.pausas||[]).length).map(x=>acordado(x))),
+    eficiencia: Math.round(lista.reduce((s,x)=>s+x.min,0) / Math.max(1, lista.reduce((s,x)=>s+naCama(x),0)) * 100)
   };
 }
 
@@ -43,6 +50,7 @@ export function dicas(noites, meta, hoje, sessoes){
     if(dif <= -45) out.push(['⚠️', `Nesta semana você dormiu em média <b>${durTxt(sem.media)}</b>, ${durTxt(-dif)} abaixo da sua meta. Sono curto atrapalha a recuperação muscular e aumenta a fome.`]);
     else if(dif >= -15) out.push(['✅', `Média de <b>${durTxt(sem.media)}</b> por noite nesta semana: dentro da sua meta. Seu corpo agradece.`]);
     if(sem.debito >= 120) out.push(['⏰', `Débito de sono da semana: <b>${durTxt(sem.debito)}</b>. Deitar 30 minutos mais cedo nas próximas noites ajuda a recuperar.`]);
+    if(sem.despertares >= 2) out.push(['🌗', `Você acordou no meio da noite em <b>${sem.despertares} noites</b> nesta semana, ficando em média <b>${durTxt(sem.acordadoMedio)}</b> acordado. Evite celular e luz forte quando acordar, e cafeína depois das 16h.${sem.despertares >= 4 ? ' Se isso for frequente, vale conversar com um médico.' : ''}`]);
     if(sem.curtas >= 2) out.push(['😵', `<b>${sem.curtas} noites</b> com menos de 6 horas nesta semana. Em dias assim, prefira manter a carga em vez de buscar recorde.`]);
   }
   if(mes.n >= 4){

@@ -62,13 +62,14 @@ const POOL = [
   { id:'agua',     ico:'💧', txt:()=>'Bata a meta de água em 4 dias',      alvo:()=>4, prog:c=>c.aguaDias },
   { id:'volume',   ico:'📈', txt:c=>c.volumeAntes ? 'Levante mais peso total que na semana passada' : 'Levante 5 toneladas na semana',
     alvo:c=>c.volumeAntes ? Math.round(c.volumeAntes/1000*10)/10 + 0.1 : 5, prog:c=>Math.round(c.volume/100)/10, un:'t' },
+  { id:'sono',     ico:'🌙', txt:()=>'Durma 7 horas ou mais em 4 noites', alvo:()=>4, prog:c=>c.sonoBom||0, desde:'2026-11-23' },
   { id:'reagir',   ico:'👏', txt:()=>'Reaja ao treino de 3 pessoas do grupo', alvo:()=>3, prog:c=>c.reacoes, grupo:true },
   { id:'sabado',   ico:'👨‍👩‍👦', txt:()=>'Treine no sábado com a família',   alvo:()=>1, prog:c=>c.sabado ? 1 : 0, grupo:true },
 ];
 export function missoesDaSemana(ctx, uid, ts = Date.now()){
   const sem = chaveSemana(ts);
   const fixa = { id:'treinos', ico:'🔥', txt:c=>`Treine ${c.meta} vezes`, alvo:c=>c.meta, prog:c=>c.treinos };
-  const pool = POOL.filter(m=>!m.grupo || ctx.grupo).map(m=>({ m, k: semente(sem+'|'+uid+'|'+m.id) })).sort((a,b)=>a.k-b.k).map(x=>x.m);
+  const pool = POOL.filter(m=>(!m.grupo || ctx.grupo) && (!m.desde || sem >= m.desde)).map(m=>({ m, k: semente(sem+'|'+uid+'|'+m.id) })).sort((a,b)=>a.k-b.k).map(x=>x.m);
   return [fixa, pool[0], pool[1]].filter(Boolean).map(m=>{
     const alvo = m.alvo(ctx), feito = Math.min(m.prog(ctx), alvo);
     return { id: sem+':'+m.id, ico:m.ico, txt:m.txt(ctx), alvo, feito, ok: m.prog(ctx) >= alvo, un:m.un||'' };

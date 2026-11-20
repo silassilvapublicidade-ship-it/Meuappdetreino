@@ -12,6 +12,7 @@ import {
 import { calcular as calcConquistas, nivel, semanasAtivas, chaveDia, NIVEIS } from './conquistas.js';
 import { prepararCatalogo, acharNoCatalogo, GRUPOS } from './catalogo.js';
 import { tecnicasDe, tecnica, TECNICAS } from './tecnicas.js';
+import { QUALIDADE, duracao, durTxt, horaDe, horaTxt, estatisticas, dicas } from './sono.js';
 import { sequencia, missoesDaSemana, TEMAS, aplicarTema, metaAgua, litros } from './engaja.js';
 import { suportaPush, ehIOS, instalado as pwaInstalado, permissao, assinaturaAtual, assinar, cancelar as cancelarPush } from './push.js';
 import * as D from './dados.js';
@@ -76,7 +77,7 @@ let ADMIN = false;        // acesso à área do admin
 let AVISOS = [];          // avisos do admin para todos
 let METAS = { peso:null, gordura:null, data:null };
 let NOTIF = { grupo:true, reacoes:true, lembrete:true, resumo:true }, LEM_HORA = '';
-let MISSOES = [], TEMA = 'neon', AGUA = { dias:{}, manual:null };
+let MISSOES = [], TEMA = 'neon', AGUA = { dias:{}, manual:null }, SONO = { noites:{}, meta:null };
 const VERSAO = typeof __VERSAO__ !== 'undefined' ? __VERSAO__ : 'dev';
 const S = {
   view:'carregando', auth:'entrar', authMsg:'', authErr:'',
@@ -652,8 +653,10 @@ async function salvarEdicao(){
 function rotuloCurto(W){
   const nome = String(W && W.name || '').replace(/\(.*?\)/g,'').trim();
   const partes = nome.split(/\s*[\/·,+&]\s*|\s+e\s+/i).map(x=>x.trim()).filter(Boolean);
-  if(partes.length >= 2) return partes.slice(0,2).map(x=>x.split(/\s+/)[0]).join(' ');
-  return nome.split(/\s+/).slice(0,2).join(' ');
+  const palavras = partes.length >= 2 ? partes.slice(0,2).map(x=>x.split(/\s+/)[0]) : nome.split(/\s+/).slice(0,2);
+  // palavras longas não cabem na célula do dia: abrevia
+  const ABREV = { superior:'Sup.', inferior:'Inf.', inferiores:'Pernas', posterior:'Post.', 'quadríceps':'Quadri', quadriceps:'Quadri', 'metabólico':'Metab.', ombros:'Ombro' };
+  return palavras.map(w=>{ const k = w.toLowerCase(); return ABREV[k] || (w.length > 8 ? w.slice(0,6)+'.' : w); }).join(' ');
 }
 function vHoje(){
   if(!FICHA) return vOnboarding();
@@ -740,6 +743,7 @@ function vHoje(){
     <button class="btn sm ghost cd-btn" data-a="cardio">♥ Registrar cardio</button>
     <div class="section"><div class="card-h"><h2 class="h2">Esta semana</h2><button class="link" data-a="share" data-t="semana">${ICON.share} Compartilhar</button></div><div class="week">${cells}</div></div>
     ${cardAgua()}
+    ${cardSono()}
     ${cardMissoes()}
     <div class="section">${nivelStrip()}</div>
     <div class="section">${tiles}</div>
@@ -907,6 +911,7 @@ function ctxMissoes(){
     sabado: sem.some(s=>new Date(s.start).getDay()===6),
     reacoes: new Set((S.reacoes||[]).filter(r=>r.from_user===UID && r.dia>=kw).map(r=>r.to_user+'|'+r.dia)).size,
     aguaDias: Object.entries(AGUA.dias).filter(([dk,ml])=>dk>=kw && ml>=metaDia(dk)).length,
+    sonoBom: Object.entries(SONO.noites).filter(([dk,n])=>dk>=kw && duracao(n)>=420).length, semana: kw,
     volume: treinos.reduce((n,s)=>n+(s.vol||0),0), volumeAntes: ant.filter(s=>!ehCardio(s)).reduce((n,s)=>n+(s.vol||0),0),
     grupo: !!S.grupo
   };
@@ -1026,6 +1031,127 @@ async function salvarMetaAguaSheet(){
   if(ml && (ml<500 || ml>8000)){ toast('Use uma meta entre 0,5 e 8 litros.', true); return; }
   try{ await D.salvarMetaAgua(UID, ml); AGUA.manual = ml; guardarCache(); toast(ml ? 'Meta de água: '+litros(ml)+' L por dia.' : 'Meta automática ativada.'); aguaSheet(); if(S.view==='hoje') atualizarAgua(); }
   catch(e){ toast('Não consegui salvar agora. Confira a internet.', true); }
+}
+
+/* ----- Sono ----- */
+function metaSono(){ return SONO.meta || 480; }
+function noiteDe(dk){ return SONO.noites[dk] || null; }
+// salva no aparelho na hora; manda para a nuvem e, sem internet, fica na fila
+async function gravarSono(dk, n){
+  if(n) SONO.noites[dk] = n; else delete SONO.noites[dk];
+  const pend = LS.get('mt.sono.pend.'+UID, {}); pend[dk] = n || null; LS.set('mt.sono.pend.'+UID, pend);
+  guardarCache();
+  try{ await enviarSonoPendente(); return true; }catch(e){ return false; }
+}
+async function enviarSonoPendente(){
+  const pend = LS.get('mt.sono.pend.'+UID, {}), dias = Object.keys(pend);
+  for(const dk of dias){ await D.salvarSono(UID, dk, pend[dk]); const p2 = LS.get('mt.sono.pend.'+UID, {}); delete p2[dk]; LS.set('mt.sono.pend.'+UID, p2); }
+}
+function diaMenos(n){ const t = new Date(); t.setHours(12,0,0,0); t.setDate(t.getDate()-n); return t; }
+function cardSono(){
+  const hoje = chaveDia(Date.now()), n = noiteDe(hoje), meta = metaSono();
+  const barras = Array.from({length:7}, (_,j)=>{ const t = diaMenos(6-j), dk = chaveDia(t.getTime()), x = noiteDe(dk), m = x ? duracao(x) : 0;
+    return `<span class="sn-c${m && m>=meta-15?' ok':''}${dk===hoje?' hj':''}"><span class="sn-t"><i style="height:${Math.min(100, Math.round(m/600*100))}%"></i></span><small>${WD[t.getDay()]}</small></span>`; }).join('');
+  const topo = n
+    ? `<p class="sn-v"><b>${durTxt(duracao(n))}</b> esta noite · ${horaDe(n.dormiu)} → ${horaDe(n.acordou)}${n.q?' '+QUALIDADE[n.q-1][1]:''}</p>`
+    : `<p class="sn-v">Como foi a noite? Registre a hora que dormiu e que acordou.</p>`;
+  return `<div class="section"><div class="sono">
+    <div class="card-h" style="margin:0"><h2 class="h2" style="margin:0">🌙 Sono</h2><button class="link" data-a="sono">semana e mês</button></div>
+    ${topo}
+    <div class="sn-mini" aria-hidden="true">${barras}</div>
+    <div class="ag-bts">${n ? `<button class="chipbtn ghost" data-a="sono-reg" data-d="${hoje}">Editar esta noite</button>` : `<button class="chipbtn" data-a="sono-reg">+ Registrar sono</button>${ultimaNoite() ? `<button class="chipbtn ghost" data-a="sono-igual">Igual à última</button>` : ''}`}</div>
+  </div></div>`;
+}
+function ultimaNoite(){ const d = Object.keys(SONO.noites).sort().pop(); return d ? SONO.noites[d] : null; }
+// monta data/hora: acordou no dia dk; se o horário de dormir for depois do de acordar, dormiu no dia anterior
+function montarNoite(dk, hDormiu, hAcordou){
+  const [y,m,d] = dk.split('-').map(Number), [h1,m1] = hDormiu.split(':').map(Number), [h2,m2] = hAcordou.split(':').map(Number);
+  const acordou = new Date(y, m-1, d, h2, m2), dormiu = new Date(y, m-1, d, h1, m1);
+  if(dormiu >= acordou) dormiu.setDate(dormiu.getDate()-1);
+  return { dormiu: dormiu.getTime(), acordou: acordou.getTime() };
+}
+async function sonoIgualUltima(){
+  const u = ultimaNoite(); if(!u) return;
+  const dk = chaveDia(Date.now()), n = Object.assign(montarNoite(dk, horaDe(u.dormiu), horaDe(u.acordou)), { q: null, obs: '' });
+  const ok = await gravarSono(dk, n);
+  toast(`Sono registrado: ${durTxt(duracao(n))}${ok?'':' (vai para a nuvem quando tiver internet)'}.`);
+  render(); verificarMissoes();
+}
+function sonoRegSheet(dk){
+  dk = dk || chaveDia(Date.now());
+  const n = noiteDe(dk), u = ultimaNoite();
+  S.sonoQ = n && n.q || null;
+  const hd = n ? horaDe(n.dormiu) : u ? horaDe(u.dormiu) : '23:00';
+  const ha = n ? horaDe(n.acordou) : u ? horaDe(u.acordou) : '07:00';
+  openSheet(`<h2>${n?'Editar noite':'Registrar sono'}</h2><p>Coloque a hora em que dormiu e a hora em que acordou.</p>
+    <div class="fgrid cd sn-f">
+      <label><span>Acordei no dia</span><input class="inp" id="sn-dia" type="date" value="${dk}" max="${chaveDia(Date.now())}"></label>
+      <label><span>Dormi às</span><input class="inp" id="sn-dormiu" type="time" value="${hd}"></label>
+      <label><span>Acordei às</span><input class="inp" id="sn-acordou" type="time" value="${ha}"></label>
+      <label><span>Total</span><output class="inp sn-tot" id="sn-tot"></output></label></div>
+    <p class="lbl" style="margin-top:12px">Como foi a noite? <small class="ag-leg">(opcional)</small></p>
+    <div class="sn-q">${QUALIDADE.map(([v,e,l])=>`<button class="int-b${S.sonoQ===v?' on':''}" data-a="sono-q" data-v="${v}" aria-pressed="${S.sonoQ===v}"><b style="font-size:22px">${e}</b><small>${l}</small></button>`).join('')}</div>
+    <textarea class="notes sm" id="sn-obs" maxlength="300" placeholder="Observação (opcional): acordou de madrugada, café tarde…">${esc(n && n.obs || '')}</textarea>
+    <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="sono-save">Salvar</button>
+      ${n?`<button class="btn ghost" data-a="sono-del" data-d="${dk}">Apagar esta noite</button>`:''}<button class="btn ghost" data-a="close">Cancelar</button></div>`);
+  atualizarTotalSono();
+}
+function atualizarTotalSono(){
+  const o = $('#sn-tot'); if(!o) return;
+  const hd = $('#sn-dormiu').value, ha = $('#sn-acordou').value;
+  if(!hd || !ha){ o.textContent = '—'; return; }
+  const n = montarNoite($('#sn-dia').value || chaveDia(Date.now()), hd, ha);
+  o.textContent = durTxt(duracao(n));
+}
+async function salvarSonoSheet(){
+  const dk = $('#sn-dia').value || chaveDia(Date.now()), hd = $('#sn-dormiu').value, ha = $('#sn-acordou').value;
+  if(!hd || !ha){ toast('Preencha os dois horários.', true); return; }
+  const n = Object.assign(montarNoite(dk, hd, ha), { q: S.sonoQ || null, obs: ($('#sn-obs').value||'').trim() });
+  const min = duracao(n);
+  if(min < 60 || min > 16*60){ toast('Confira os horários: a noite ficou com '+durTxt(min)+'.', true); return; }
+  const ok = await gravarSono(dk, n);
+  closeSheet(true); render();
+  toast(`Sono salvo: ${durTxt(min)}${ok?'':' (vai para a nuvem quando tiver internet)'}.`);
+  if(min >= metaSono() - 15) setTimeout(()=>{ festa('😴', 'Meta de sono batida!', durTxt(min)+' de descanso. Recuperação em dia.'); }, 300);
+  verificarMissoes();
+}
+async function apagarSono(dk){
+  if(S.sonoDel !== dk){ S.sonoDel = dk; toast('Toque de novo em "Apagar" para confirmar.'); setTimeout(()=>{ if(S.sonoDel===dk) S.sonoDel = null; }, 4000); return; }
+  S.sonoDel = null;
+  await gravarSono(dk, null); closeSheet(true); render(); toast('Noite apagada.');
+}
+function sonoSheet(){
+  const aba = S.sonoAba || 'semana', meta = metaSono(), dias = aba==='semana' ? 7 : 30;
+  const ate = chaveDia(Date.now()), desde = chaveDia(diaMenos(dias-1).getTime());
+  const st = estatisticas(SONO.noites, meta, desde, ate);
+  const barras = Array.from({length:dias}, (_,j)=>{ const t = diaMenos(dias-1-j), dk = chaveDia(t.getTime()), x = noiteDe(dk), m = x ? duracao(x) : 0;
+    return `<button class="sn-c${m && m>=meta-15?' ok':''}${m && m<360?' baixo':''}" data-a="sono-reg" data-d="${dk}" aria-label="${fmtDate(t.getTime())}: ${m?durTxt(m):'sem registro'}">${aba==='semana'?`<small class="sn-l">${m?durTxt(m):''}</small>`:''}<span class="sn-t"><i style="height:${Math.min(100, Math.round(m/600*100))}%"></i><b style="bottom:${Math.round(meta/600*100)}%"></b></span><small>${aba==='semana'?WD[t.getDay()]:(j%5===4||j===dias-1?t.getDate():'')}</small></button>`; }).join('');
+  const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="dlt">${sub}</div>`:''}</div>`;
+  const resumo = st.n ? `<div class="sum">${tile('Média', durTxt(st.media), (st.media>=meta-15?'✓ na meta':'meta '+durTxt(meta)))}${tile('Dormir', horaTxt(st.dormir), '±'+Math.round(st.desvio)+' min')}${tile('Acordar', horaTxt(st.acordar), '')}</div>
+    <div class="sum">${tile('Na meta', st.metaOk+'<small>/'+st.n+'</small>', 'noites')}${tile('Débito', durTxt(st.debito), aba==='semana'?'na semana':'no mês')}${tile('Qualidade', st.qualidade?QUALIDADE[Math.round(st.qualidade)-1][1]:'—', st.qualidade?QUALIDADE[Math.round(st.qualidade)-1][2]:'')}</div>
+    <p class="note">Melhor noite: <b>${durTxt(st.melhor.min)}</b> (${fmtDate(new Date(st.melhor.acordou).getTime())}) · Pior: <b>${durTxt(st.pior.min)}</b> (${fmtDate(new Date(st.pior.acordou).getTime())})${st.curtas?` · ${st.curtas} ${st.curtas===1?'noite':'noites'} com menos de 6h`:''}</p>`
+    : `<p class="note">Nenhuma noite registrada ${aba==='semana'?'nos últimos 7 dias':'nos últimos 30 dias'}.</p>`;
+  const dc = dicas(SONO.noites, meta, Date.now(), S.sessions).map(([i,t])=>`<li><span aria-hidden="true">${i}</span><p>${t}</p></li>`).join('');
+  const hist = Object.keys(SONO.noites).sort().reverse().slice(0, 30).map(dk=>{ const n = SONO.noites[dk], m = duracao(n);
+    return `<button class="sn-h" data-a="sono-reg" data-d="${dk}"><span class="sn-hd">${esc(fmtDate(new Date(n.acordou).getTime()))}</span><span>${horaDe(n.dormiu)} → ${horaDe(n.acordou)}</span><b class="${m>=meta-15?'ok':m<360?'baixo':''}">${durTxt(m)}</b><span>${n.q?QUALIDADE[n.q-1][1]:''}</span></button>`; }).join('');
+  openSheet(`<div id="sn-sheet"><h2>🌙 Sono</h2>
+    <div class="seg two" role="tablist"><button data-a="sono-aba" data-t="semana" role="tab" aria-selected="${aba==='semana'}">Semana</button><button data-a="sono-aba" data-t="mes" role="tab" aria-selected="${aba==='mes'}">Mês</button></div>
+    <div class="sn-graf ${aba}" aria-label="Horas de sono por noite">${barras}</div>
+    <p class="note" style="margin-top:4px">Linha tracejada = sua meta de ${durTxt(meta)}. Toque numa barra para registrar ou editar.</p>
+    ${resumo}
+    ${dc?`<p class="lbl" style="margin-top:14px">O que os números dizem</p><ul class="sn-dicas">${dc}</ul>`:''}
+    <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="sono-reg">+ Registrar noite</button></div>
+    ${hist?`<p class="lbl" style="margin-top:16px">Histórico</p><div class="sn-hist">${hist}</div>`:''}
+    <p class="lbl" style="margin-top:16px">Meta de sono</p>
+    <div class="ag-mrow"><label class="lbl-in"><span>Horas por noite</span><input class="inp" id="sn-meta" inputmode="decimal" value="${fmtN(meta/60,1)}"></label><button class="btn sm" data-a="sono-meta">Salvar</button></div>
+    <p class="note">Adultos: 7 a 9 horas. Adolescentes: 8 a 10 horas.</p>
+    <div class="btns"><button class="btn ghost" data-a="close">Fechar</button></div></div>`);
+}
+async function salvarMetaSono(){
+  const h = num(($('#sn-meta')||{}).value), min = h ? Math.round(h*60) : null;
+  if(!min || min < 240 || min > 720){ toast('Use uma meta entre 4 e 12 horas.', true); return; }
+  SONO.meta = min; guardarCache(); sonoSheet();
+  try{ await D.salvarMetaSono(UID, min); toast('Meta de sono: '+durTxt(min)+' por noite.'); }catch(e){ toast('Meta salva no aparelho. Confira a internet.', true); }
 }
 
 /* ----- 8. Temas ----- */
@@ -2873,6 +2999,14 @@ document.addEventListener('click', async e=>{
     case 'trocar-treino': trocarTreinoSheet(); break;
     case 'missoes': closeSheet(true); missoesSheet(); break;
     case 'agua': aguaSheet(); break;
+    case 'sono': S.sonoAba = S.sonoAba || 'semana'; sonoSheet(); break;
+    case 'sono-aba': S.sonoAba = t.dataset.t; sonoSheet(); break;
+    case 'sono-reg': sonoRegSheet(t.dataset.d); break;
+    case 'sono-igual': sonoIgualUltima(); break;
+    case 'sono-q': { const v = +t.dataset.v; S.sonoQ = S.sonoQ===v ? null : v; document.querySelectorAll('[data-a="sono-q"]').forEach(b=>{ const on = +b.dataset.v===S.sonoQ; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); break; }
+    case 'sono-save': salvarSonoSheet(); break;
+    case 'sono-del': apagarSono(t.dataset.d); break;
+    case 'sono-meta': salvarMetaSono(); break;
     case 'agua+': addAgua(+t.dataset.ml); break;
     case 'agua-undo': desfazerAgua(); break;
     case 'agua-meta': salvarMetaAguaSheet(); break;
@@ -3024,6 +3158,7 @@ document.addEventListener('input', e=>{
   const el = e.target;
   if(el.id==='bib-q'){ filtrarBiblioteca(); return; }
   if(el.id==='cd-min'){ estimarCardio(); return; }
+  if(el.id==='sn-dormiu' || el.id==='sn-acordou' || el.id==='sn-dia'){ atualizarTotalSono(); return; }
   if(el.dataset && el.dataset.he && S.editS){ editarCampoTreino(el); return; }
   if(el.id==='cmp-range'){ const v=+el.value; const a=$('#cmp-img-a'), d=$('#cmp-div'); if(a) a.style.clipPath='inset(0 '+(100-v)+'% 0 0)'; if(d) d.style.left=v+'%'; return; }
   if(el.dataset && el.dataset.e && S.edit && el.tagName!=='SELECT'){ editInput(el); return; }
@@ -3083,6 +3218,9 @@ async function carregar(silencioso){
     MISSOES = Array.isArray(d.missoes) ? d.missoes : [];
     AGUA = { dias: Object.assign({}, d.agua || {}, LS.get('mt.agua.pend.'+UID, {})), manual: d.aguaMeta || null };
     TEMA = d.tema || LS.get('mt.tema.'+UID, 'neon') || 'neon';
+    { const pend = LS.get('mt.sono.pend.'+UID, {}), noites = Object.assign({}, d.sono || {});
+      Object.entries(pend).forEach(([k,v])=>{ if(v) noites[k] = v; else delete noites[k]; });
+      SONO = { noites, meta: d.sonoMeta || null }; }
     FICHAS = d.fichas; definirFicha();
     CATALOGO = d.catalogo || []; prepararCatalogo(CATALOGO); autoCache.clear();
     VIDEOS = {}; (d.videos||[]).forEach(v=>{ VIDEOS[v.chave] = {nome:v.nome, video:v.video}; }); EDITOR = !!(d.editor || d.admin); ADMIN = !!d.admin; AVISOS = d.avisos || [];
@@ -3099,7 +3237,7 @@ async function carregar(silencioso){
     if(doAparelho){ S.sync = 'offline'; }
     if(!silencioso || S.view!=='sessao') render(); else renderStatus();
     if(doAparelho){ if(!silencioso) toast('Sem internet: usando os dados guardados no aparelho. O treino é salvo quando a conexão voltar.'); }
-    else { S.sync = 'ok'; enviarPendentes(); sincronizarAparelho(); salvarAguaDepois(); if(LS.get('mt.missoes.pend.'+UID, false)) D.salvarMissoes(UID, MISSOES).then(()=>LS.set('mt.missoes.pend.'+UID, false)).catch(()=>{}); }
+    else { S.sync = 'ok'; enviarPendentes(); sincronizarAparelho(); salvarAguaDepois(); enviarSonoPendente().catch(()=>{}); if(LS.get('mt.missoes.pend.'+UID, false)) D.salvarMissoes(UID, MISSOES).then(()=>LS.set('mt.missoes.pend.'+UID, false)).catch(()=>{}); }
     // tema: só vale se o nível já liberou
     { const t = TEMAS.find(x=>x.id===TEMA); aplicarTema(t ? TEMA : 'neon'); }
     verificarMissoes(false);
@@ -3126,7 +3264,7 @@ function guardarCache(){
   const c = LS.get(kDados(), null); if(!c) return;
   const pend = new Set(S.pending.map(p=>p.id));
   Object.assign(c, { treinos:S.sessions.filter(x=>!pend.has(x.id)), peso:S.body, avaliacoes:S.measures, fotos:S.photos, fichas:FICHAS, nome:NOME, avatar:AVATAR, instagram:INSTA,
-    missoes:MISSOES, tema:TEMA, agua:AGUA.dias, aguaMeta:AGUA.manual,
+    missoes:MISSOES, tema:TEMA, agua:AGUA.dias, aguaMeta:AGUA.manual, sono:SONO.noites, sonoMeta:SONO.meta,
     videos:Object.entries(VIDEOS).map(([chave,v])=>({chave, nome:v.nome, video:v.video})) });
   LS.set(kDados(), c);
 }

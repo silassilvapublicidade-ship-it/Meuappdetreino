@@ -75,7 +75,7 @@ async function enviar(usuarios: string[], msg: Msg) {
   return ok;
 }
 
-async function querem(usuarios: string[], chave: "grupo" | "reacoes" | "lembrete" | "resumo" | "avisos") {
+async function querem(usuarios: string[], chave: "grupo" | "reacoes" | "lembrete" | "resumo" | "avisos" | "sono") {
   if (!usuarios.length) return [];
   const { data } = await sb.from("profiles").select("id,notif").in("id", usuarios);
   const fora = new Set((data || []).filter((p) => p.notif && p.notif[chave] === false).map((p) => p.id));
@@ -166,6 +166,53 @@ async function lembretes() {
       url: "/?v=hoje",
       tag: "lembrete",
     });
+  }
+  return enviados;
+}
+
+// Sono: aviso da hora de deitar (30 min antes) e lembrete de registrar de manhã
+function hhmm(min: number) { min = ((min % 1440) + 1440) % 1440; return String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0"); }
+function naJanela(agora: number, alvo: number, largura = 30) { const d = ((agora - alvo) % 1440 + 1440) % 1440; return d < largura; }
+async function sonoAvisos() {
+  const agora = agoraLocal();
+  const { data: subs } = await sb.from("push_subs").select("user_id");
+  const ids = [...new Set((subs || []).map((x) => x.user_id))];
+  if (!ids.length) return 0;
+  const { data: perfis } = await sb.from("profiles").select("id,notif,sono_meta,sono_acordar,sono_deitar_ultimo,sono_manha_ultimo").in("id", ids);
+  let enviados = 0;
+  for (const p of perfis || []) {
+    if (p.notif && p.notif.sono === false) continue;
+    const meta = p.sono_meta || 480;
+    const acordar = p.sono_acordar ? (() => { const [h, m] = String(p.sono_acordar).split(":").map(Number); return h * 60 + m; })() : null;
+    // noite: 30 min antes da hora ideal de deitar
+    if (acordar != null && p.sono_deitar_ultimo !== agora.data) {
+      const deitar = acordar - meta;
+      if (naJanela(agora.min, deitar - 30)) {
+        await sb.from("profiles").update({ sono_deitar_ultimo: agora.data }).eq("id", p.id);
+        enviados += await enviar([p.id], {
+          title: "Hora de desacelerar 🌙",
+          body: `Para dormir ${Math.floor(meta / 60)}h${meta % 60 ? String(meta % 60).padStart(2, "0") : ""} e acordar às ${hhmm(acordar)}, deite às ${hhmm(deitar)}. Ao deitar, toque em "Vou dormir".`,
+          url: "/?v=hoje",
+          tag: "sono-noite",
+        });
+      }
+    }
+    // manhã: só para quem já usa o registro de sono e ainda não registrou hoje
+    const alvoManha = acordar != null ? acordar + 90 : 9 * 60 + 30;
+    if (p.sono_manha_ultimo !== agora.data && naJanela(agora.min, alvoManha)) {
+      await sb.from("profiles").update({ sono_manha_ultimo: agora.data }).eq("id", p.id);
+      const desde = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
+      const { count: usa } = await sb.from("sono").select("dia", { count: "exact", head: true }).eq("user_id", p.id).gte("dia", desde);
+      if (!usa) continue;
+      const { count: hoje } = await sb.from("sono").select("dia", { count: "exact", head: true }).eq("user_id", p.id).eq("dia", agora.data);
+      if (hoje) continue;
+      enviados += await enviar([p.id], {
+        title: "Como foi sua noite? 😴",
+        body: "Registre o sono em segundos: toque em \"Acordei\" ou ajuste os horários.",
+        url: "/?sono=registrar",
+        tag: "sono-manha",
+      });
+    }
   }
   return enviados;
 }
@@ -265,7 +312,7 @@ Deno.serve(async (req) => {
     if (corpo.tipo === "treino" && corpo.id) n = await treinoTerminado(corpo.id);
     else if (corpo.tipo === "reacao" && corpo.id) n = await reacao(corpo.id);
     else if (corpo.tipo === "aviso" && corpo.id) n = await aviso(corpo.id);
-    else if (corpo.tipo === "lembretes") n = await lembretes();
+    else if (corpo.tipo === "lembretes") n = (await lembretes()) + (await sonoAvisos());
     else if (corpo.tipo === "resumo" && corpo.previa) { const pv: Msg[] = []; await resumo(pv); return Response.json({ ok: true, previa: pv }); }
     else if (corpo.tipo === "resumo") n = await resumo();
     else return new Response("tipo", { status: 400 });

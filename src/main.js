@@ -77,7 +77,7 @@ let ADMIN = false;        // acesso à área do admin
 let AVISOS = [];          // avisos do admin para todos
 let METAS = { peso:null, gordura:null, data:null };
 let NOTIF = { grupo:true, reacoes:true, lembrete:true, resumo:true }, LEM_HORA = '';
-let MISSOES = [], TEMA = 'neon', AGUA = { dias:{}, manual:null }, SONO = { noites:{}, meta:null };
+let MISSOES = [], TEMA = 'neon', AGUA = { dias:{}, manual:null }, SONO = { noites:{}, meta:null, acordar:'' }, COCHILOS = [];
 const VERSAO = typeof __VERSAO__ !== 'undefined' ? __VERSAO__ : 'dev';
 const S = {
   view:'carregando', auth:'entrar', authMsg:'', authErr:'',
@@ -694,6 +694,7 @@ function vHoje(){
         <div><div class="hero-name">${esc(W.name)}</div><div class="hero-focus">${esc(W.focus)}</div>
         <div class="meta">${W.ex.length} exercícios · ${W.total} séries</div></div></div>
       <p class="why">${why}${ups?` <span class="upnote">▲ ${ups} ${ups>1?'exercícios prontos':'exercício pronto'} para subir carga.</span>`:''}</p>
+      ${avisoSonoTreino()}
       <div class="btns"><button class="btn primary" data-a="start" data-l="${L}">Começar treino ${L}</button>
       <button class="btn ghost" data-a="go" data-v="treino:${L}">Ver exercícios</button>
       ${FICHA.order.length>1?`<button class="btn ghost" data-a="trocar-treino">⇄ Fazer outro treino hoje</button>`:''}</div></section>`;
@@ -1054,12 +1055,14 @@ function cardSono(){
     return `<span class="sn-c${m && m>=meta-15?' ok':''}${dk===hoje?' hj':''}"><span class="sn-t"><i style="height:${Math.min(100, Math.round(m/600*100))}%"></i></span><small>${WD[t.getDay()]}</small></span>`; }).join('');
   const topo = n
     ? `<p class="sn-v"><b>${durTxt(duracao(n))}</b> de sono esta noite · ${horaDe(n.dormiu)} → ${horaDe(n.acordou)}${n.q?' '+QUALIDADE[n.q-1][1]:''}${acordado(n)?`<br><span class="sn-pz">🌗 ${(n.pausas||[]).length===1?'acordou 1 vez':'acordou '+n.pausas.length+' vezes'} · ${durTxt(acordado(n))} acordado</span>`:''}</p>`
-    : `<p class="sn-v">Como foi a noite? Registre a hora que dormiu e que acordou.</p>`;
+    : noiteAberta() ? '' : `<p class="sn-v">Como foi a noite? Toque em "Vou dormir" ao deitar, ou registre os horários.</p>`;
+  const coch = minCochilos(hoje);
   return `<div class="section"><div class="sono">
     <div class="card-h" style="margin:0"><h2 class="h2" style="margin:0">🌙 Sono</h2><button class="link" data-a="sono">semana e mês</button></div>
-    ${topo}
+    ${sonoAgora()}
+    ${topo}${coch?`<p class="sn-pz" style="margin:-4px 0 10px">💤 + ${coch<60?coch+' min':durTxt(coch)} de cochilo hoje</p>`:''}
     <div class="sn-mini" aria-hidden="true">${barras}</div>
-    <div class="ag-bts">${n ? `<button class="chipbtn ghost" data-a="sono-reg" data-d="${hoje}">Editar esta noite</button>` : `<button class="chipbtn" data-a="sono-reg">+ Registrar sono</button>${ultimaNoite() ? `<button class="chipbtn ghost" data-a="sono-igual">Igual à última</button>` : ''}`}</div>
+    <div class="ag-bts">${n ? `<button class="chipbtn ghost" data-a="sono-reg" data-d="${hoje}">Editar esta noite</button>` : noiteAberta() ? '' : `${ehNoite()?'':`<button class="chipbtn" data-a="sono-dormir">🌙 Vou dormir</button>`}<button class="chipbtn ghost" data-a="sono-reg">Registrar horários</button>${ultimaNoite() ? `<button class="chipbtn ghost" data-a="sono-igual">Igual à última</button>` : ''}`}<button class="chipbtn ghost" data-a="cochilo">💤 Cochilo</button></div>
   </div></div>`;
 }
 function ultimaNoite(){ const d = Object.keys(SONO.noites).sort().pop(); return d ? SONO.noites[d] : null; }
@@ -1103,11 +1106,11 @@ async function sonoIgualUltima(){
   toast(`Sono registrado: ${durTxt(duracao(n))}${ok?'':' (vai para a nuvem quando tiver internet)'}.`);
   render(); verificarMissoes();
 }
-function sonoRegSheet(dk){
+function sonoRegSheet(dk, pre){
   dk = dk || chaveDia(Date.now());
   const n = noiteDe(dk), u = ultimaNoite();
   S.sonoQ = n && n.q || null;
-  const hd = n ? horaDe(n.dormiu) : u ? horaDe(u.dormiu) : '23:00';
+  const hd = pre && pre.dormiu ? pre.dormiu : n ? horaDe(n.dormiu) : u ? horaDe(u.dormiu) : '23:00';
   const ha = n ? horaDe(n.acordou) : u ? horaDe(u.acordou) : '07:00';
   openSheet(`<h2>${n?'Editar noite':'Registrar sono'}</h2><p>Coloque a hora em que dormiu e a hora em que acordou.</p>
     <div class="fgrid cd sn-f">
@@ -1176,12 +1179,17 @@ function sonoSheet(){
     <div class="sn-graf ${aba}" aria-label="Horas de sono por noite">${barras}</div>
     <p class="note" style="margin-top:4px">Linha tracejada = sua meta de ${durTxt(meta)}. Toque numa barra para registrar ou editar.</p>
     ${resumo}
+    <p class="lbl" style="margin-top:16px">Linha do tempo</p>${linhaDoTempo(aba==='semana'?7:14)}
+    ${resumoCochilos(desde)}
     ${dc?`<p class="lbl" style="margin-top:14px">O que os números dizem</p><ul class="sn-dicas">${dc}</ul>`:''}
     <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="sono-reg">+ Registrar noite</button></div>
     ${hist?`<p class="lbl" style="margin-top:16px">Histórico</p><div class="sn-hist">${hist}</div>`:''}
     <p class="lbl" style="margin-top:16px">Meta de sono</p>
     <div class="ag-mrow"><label class="lbl-in"><span>Horas por noite</span><input class="inp" id="sn-meta" inputmode="decimal" value="${fmtN(meta/60,1)}"></label><button class="btn sm" data-a="sono-meta">Salvar</button></div>
     <p class="note">Adultos: 7 a 9 horas. Adolescentes: 8 a 10 horas.</p>
+    <p class="lbl" style="margin-top:16px">Hora ideal de deitar</p>
+    <div class="ag-mrow"><label class="lbl-in"><span>Preciso acordar às</span><input class="inp" type="time" id="sn-acordar" value="${esc(SONO.acordar||'')}"></label><button class="btn sm" data-a="sono-acordar">Salvar</button></div>
+    <p class="note">${horaDeitar() ? `Para dormir ${durTxt(meta)}, deite às <b>${horaDeitar()}</b>. Com as notificações ativas, o app avisa 30 min antes e lembra de registrar a noite de manhã.` : 'Com a hora de acordar, o app calcula a hora de deitar e avisa 30 min antes.'}</p>
     <div class="btns"><button class="btn ghost" data-a="close">Fechar</button></div></div>`);
 }
 async function salvarMetaSono(){
@@ -1189,6 +1197,161 @@ async function salvarMetaSono(){
   if(!min || min < 240 || min > 720){ toast('Use uma meta entre 4 e 12 horas.', true); return; }
   SONO.meta = min; guardarCache(); sonoSheet();
   try{ await D.salvarMetaSono(UID, min); toast('Meta de sono: '+durTxt(min)+' por noite.'); }catch(e){ toast('Meta salva no aparelho. Confira a internet.', true); }
+}
+
+/* ----- Sono v2: registro ao vivo, hora ideal, sono x treino, linha do tempo, cochilos ----- */
+const kAberta = () => 'mt.sono.aberta.'+UID;
+function noiteAberta(){ return LS.get(kAberta(), null); }
+function salvarAberta(a){ if(a) LS.set(kAberta(), a); else LS.set(kAberta(), null); }
+function minAcordar(){ if(!SONO.acordar) return null; const [h,m] = SONO.acordar.split(':').map(Number); return h*60+m; }
+function horaDeitar(){ const a = minAcordar(); return a==null ? null : horaTxt(a - metaSono()); }
+function ehNoite(){ const h = new Date().getHours(); return h >= 17 || h < 4; }
+
+function vouDormir(){
+  if(noiteAberta()){ toast('Você já marcou que foi dormir.'); return; }
+  salvarAberta({ dormiu: Date.now(), pausas: [], pausa: null });
+  vibrar(20); render(); toast('Boa noite! 🌙 Quando acordar, toque em "Acordei".');
+}
+function acordeiMadrugada(){
+  const a = noiteAberta(); if(!a) return;
+  a.pausa = Date.now(); salvarAberta(a); render();
+  toast('Anotado. Quando voltar a dormir, toque em "Voltei a dormir".');
+}
+function volteiDormir(){
+  const a = noiteAberta(); if(!a || !a.pausa) return;
+  if(Date.now() - a.pausa >= 60000) a.pausas.push({ ini: a.pausa, fim: Date.now() });
+  a.pausa = null; salvarAberta(a); render(); toast('Boa noite de novo 😴');
+}
+async function acordei(){
+  const a = noiteAberta(); if(!a) return;
+  // se estava acordado de madrugada e não voltou a dormir, a noite terminou ali
+  const acordou = a.pausa || Date.now();
+  const n = { dormiu: a.dormiu, acordou, pausas: a.pausas.slice(), q: null, obs: '' };
+  if(naCama(n) < 30){ salvarAberta(null); render(); toast('Menos de 30 minutos: não registrei como noite.'); return; }
+  const dk = chaveDia(acordou), antiga = noiteDe(dk);
+  if(antiga){ n.q = antiga.q; n.obs = antiga.obs; }
+  salvarAberta(null);
+  const ok = await gravarSono(dk, n);
+  render(); verificarMissoes();
+  bomDiaSheet(dk, ok);
+}
+function cancelarAberta(){
+  if(S.sonoCanc !== true){ S.sonoCanc = true; toast('Toque de novo para cancelar o registro desta noite.'); setTimeout(()=>{ S.sonoCanc = false; }, 4000); return; }
+  S.sonoCanc = false; salvarAberta(null); render(); toast('Registro da noite cancelado.');
+}
+function bomDiaSheet(dk, ok){
+  const n = noiteDe(dk); if(!n) return;
+  S.sonoQ = n.q || null;
+  const m = duracao(n), meta = metaSono();
+  openSheet(`<div class="bd-top"><span aria-hidden="true">☀️</span><h2>Bom dia!</h2>
+      <p>Você dormiu <b>${durTxt(m)}</b>${acordado(n)?` (${durTxt(acordado(n))} acordado no meio da noite)`:''} · ${horaDe(n.dormiu)} → ${horaDe(n.acordou)}</p>
+      <p class="note">${m >= meta-15 ? '✅ Dentro da sua meta de '+durTxt(meta)+'.' : 'Faltaram '+durTxt(meta-m)+' para a sua meta de '+durTxt(meta)+'.'}${ok?'':' Fica no aparelho e vai para a nuvem quando tiver internet.'}</p></div>
+    <p class="lbl">Como foi a noite?</p>
+    <div class="sn-q">${QUALIDADE.map(([v,e,l])=>`<button class="int-b${S.sonoQ===v?' on':''}" data-a="sono-q" data-v="${v}" aria-pressed="${S.sonoQ===v}"><b style="font-size:22px">${e}</b><small>${l}</small></button>`).join('')}</div>
+    <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="sono-bd-ok" data-d="${dk}">Pronto</button><button class="btn ghost" data-a="sono-reg" data-d="${dk}">Ajustar horários</button></div>`);
+  if(m >= meta - 15) setTimeout(()=>{ confete(0.6); }, 250);
+}
+async function bomDiaOk(dk){
+  const n = noiteDe(dk);
+  if(n && (S.sonoQ||null) !== (n.q||null)){ await gravarSono(dk, Object.assign({}, n, { q: S.sonoQ || null })); }
+  closeSheet(true); render();
+}
+
+// faixa do card de sono conforme a hora e o estado
+function sonoAgora(){
+  const a = noiteAberta();
+  if(a){
+    if(Date.now() - a.dormiu > 20*3600e3){
+      return `<div class="sn-live alerta"><p><b>Você esqueceu de marcar "Acordei"?</b> A noite começou ${fmtDate(a.dormiu)} às ${horaDe(a.dormiu)}.</p>
+        <div class="ag-bts"><button class="chipbtn" data-a="sono-aberta-ajustar">Ajustar horários</button><button class="chipbtn ghost" data-a="sono-cancelar">Descartar</button></div></div>`;
+    }
+    const dormindo = Date.now() - a.dormiu - a.pausas.reduce((s,p)=>s+(p.fim-p.ini),0) - (a.pausa ? Date.now()-a.pausa : 0);
+    if(a.pausa) return `<div class="sn-live"><p>🌗 <b>Acordado desde ${horaDe(a.pausa)}</b> · já dormiu ${durTxt(dormindo/60000)}</p>
+        <div class="ag-bts"><button class="chipbtn big" data-a="sono-voltei">😴 Voltei a dormir</button><button class="chipbtn" data-a="sono-acordei">☀️ Levantei</button></div></div>`;
+    return `<div class="sn-live"><p>😴 <b>Dormindo desde ${horaDe(a.dormiu)}</b> · ${durTxt(dormindo/60000)}${a.pausas.length?` · acordou ${a.pausas.length}×`:''}</p>
+        <div class="ag-bts"><button class="chipbtn big" data-a="sono-acordei">☀️ Acordei</button><button class="chipbtn" data-a="sono-madrugada">🌗 Acordei de madrugada</button><button class="chipbtn ghost" data-a="sono-cancelar" aria-label="Cancelar o registro desta noite">✕</button></div></div>`;
+  }
+  const deitar = horaDeitar();
+  if(ehNoite()) return `<div class="sn-live noite">${deitar ? `<p>🛏️ Para dormir <b>${durTxt(metaSono())}</b> e acordar às ${SONO.acordar}, deite às <b>${deitar}</b>.</p>` : `<p>🛏️ <button class="link" data-a="sono">Diga a hora que você acorda</button> e o app calcula a hora ideal de deitar.</p>`}
+      <div class="ag-bts"><button class="chipbtn big" data-a="sono-dormir">🌙 Vou dormir</button></div></div>`;
+  return '';
+}
+
+/* ----- 5. Sono x treino ----- */
+function sonoDaNoite(){ const n = noiteDe(chaveDia(Date.now())); return n ? duracao(n) : null; }
+function avisoSonoTreino(){
+  const m = sonoDaNoite();
+  if(m == null || m >= 360) return '';
+  return `<div class="aviso n-alerta sn-tr" role="note"><span class="av-i" aria-hidden="true">😴</span><p><b>Você dormiu ${durTxt(m)} esta noite.</b> Hoje mantenha as cargas e a técnica, sem buscar recorde. Descanso curto aumenta o risco de lesão.</p></div>`;
+}
+
+/* ----- 7. Linha do tempo ----- */
+function linhaDoTempo(dias){
+  const JAN = 22*60, INI = 20*60; // janela das 20h às 18h do dia seguinte (pega cochilo da tarde)
+  const pos = (ts, base) => Math.max(0, Math.min(100, (ts - base) / 60000 / JAN * 100));
+  const linhas = Array.from({length:dias}, (_,j)=>{
+    const t = diaMenos(dias-1-j), dk = chaveDia(t.getTime()), n = noiteDe(dk);
+    const base = new Date(t.getFullYear(), t.getMonth(), t.getDate()-1, 20, 0).getTime();
+    const barra = n ? `<i class="tl-b" style="left:${pos(new Date(n.dormiu).getTime(), base)}%;width:${pos(new Date(n.acordou).getTime(), base)-pos(new Date(n.dormiu).getTime(), base)}%"></i>${(n.pausas||[]).map(p=>`<i class="tl-p" style="left:${pos(new Date(p.ini).getTime(), base)}%;width:${Math.max(0.8, pos(new Date(p.fim).getTime(), base)-pos(new Date(p.ini).getTime(), base))}%"></i>`).join('')}` : '';
+    const cochs = COCHILOS.filter(c=>c.dia===dk).map(c=>`<i class="tl-c" style="left:${pos(new Date(c.ini).getTime(), base)}%;width:${Math.max(0.8, pos(new Date(c.fim).getTime(), base)-pos(new Date(c.ini).getTime(), base))}%"></i>`).join('');
+    return `<button class="tl-r" data-a="sono-reg" data-d="${dk}" aria-label="${fmtDate(t.getTime())}: ${n?horaDe(n.dormiu)+' às '+horaDe(n.acordou):'sem registro'}"><span class="tl-d">${WD[t.getDay()]} ${t.getDate()}</span><span class="tl-t">${barra}${cochs}</span><span class="tl-v">${n?durTxt(duracao(n)):''}</span></button>`;
+  }).join('');
+  const marcas = [20,23,2,5,8,11,14,17].map(h=>{ const m = ((h*60 - INI) + 1440) % 1440; return `<span style="left:${m/JAN*100}%">${String(h).padStart(2,'0')}h</span>`; }).join('');
+  return `<div class="tl"><div class="tl-r tl-h"><span class="tl-d"></span><span class="tl-t tl-m">${marcas}</span><span class="tl-v"></span></div>${linhas}</div>
+    <p class="note tl-leg"><i class="tl-b"></i> dormindo <i class="tl-p"></i> acordado na noite <i class="tl-c"></i> cochilo</p>`;
+}
+
+/* ----- 8. Cochilos ----- */
+function cochilosDe(dk){ return COCHILOS.filter(c=>c.dia===dk); }
+function minCochilos(dk){ return cochilosDe(dk).reduce((s,c)=>s + Math.round((new Date(c.fim)-new Date(c.ini))/60000), 0); }
+function cochiloSheet(){
+  const agora = new Date(), hh = horaTxt(agora.getHours()*60+agora.getMinutes()), ini = horaTxt(agora.getHours()*60+agora.getMinutes()-30);
+  openSheet(`<h2>💤 Cochilo</h2><p>Acabou de cochilar? Escolha quanto tempo. Ou coloque os horários.</p>
+    <div class="ag-bts big">${[15,20,30,45,60,90].map(m=>`<button class="chipbtn" data-a="cochilo-rapido" data-m="${m}">${m<60?m+' min':durTxt(m)}</button>`).join('')}</div>
+    <div class="fgrid cd" style="margin-top:14px"><label><span>Dormi às</span><input class="inp" type="time" id="ch-ini" value="${ini}"></label><label><span>Acordei às</span><input class="inp" type="time" id="ch-fim" value="${hh}"></label></div>
+    <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="cochilo-salvar">Salvar cochilo</button><button class="btn ghost" data-a="close">Cancelar</button></div>`);
+}
+async function salvarCochilo(ini, fim){
+  if(!(fim > ini)){ toast('Confira os horários do cochilo.', true); return; }
+  if(fim - ini > 4*3600e3){ toast('Cochilo de mais de 4 horas? Registre como noite de sono.', true); return; }
+  const c = { dia: chaveDia(fim), ini, fim };
+  try{ const r = await D.criarCochilo(UID, c); COCHILOS.push(r); }
+  catch(e){ toast('Não consegui salvar o cochilo. Confira a internet.', true); return; }
+  guardarCache(); closeSheet(true); render();
+  const m = Math.round((fim-ini)/60000);
+  toast(`Cochilo de ${m<60?m+' min':durTxt(m)} registrado.${new Date(ini).getHours()>=16?' Cochilos depois das 16h podem atrapalhar a noite.':''}`);
+}
+function cochiloManual(){
+  const a = ($('#ch-ini')||{}).value, b = ($('#ch-fim')||{}).value; if(!a || !b){ toast('Preencha os dois horários.', true); return; }
+  const hoje = new Date(), [h1,m1] = a.split(':').map(Number), [h2,m2] = b.split(':').map(Number);
+  const fim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), h2, m2).getTime();
+  let ini = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), h1, m1).getTime();
+  if(ini >= fim) ini -= 864e5;
+  salvarCochilo(ini, fim);
+}
+async function apagarCochilo(id){
+  if(S.cochDel !== id){ S.cochDel = id; toast('Toque de novo para apagar o cochilo.'); setTimeout(()=>{ if(S.cochDel===id) S.cochDel = null; }, 4000); return; }
+  S.cochDel = null;
+  try{ await D.apagarCochilo(id); COCHILOS = COCHILOS.filter(c=>c.id!==id); guardarCache(); sonoSheet(); toast('Cochilo apagado.'); }
+  catch(e){ toast('Não consegui apagar agora.', true); }
+}
+function resumoCochilos(desde){
+  const lista = COCHILOS.filter(c=>c.dia>=desde);
+  if(!lista.length) return '';
+  const tot = lista.reduce((s,c)=>s + Math.round((new Date(c.fim)-new Date(c.ini))/60000), 0), med = tot / lista.length;
+  const tarde = lista.filter(c=>new Date(c.ini).getHours()>=16).length;
+  const itens = lista.slice().reverse().slice(0,10).map(c=>{ const m = Math.round((new Date(c.fim)-new Date(c.ini))/60000);
+    return `<div class="sn-h"><span class="sn-hd">${esc(fmtDate(new Date(c.ini).getTime()))}</span><span>${horaDe(c.ini)} → ${horaDe(c.fim)}</span><b>${m<60?m+' min':durTxt(m)}</b><button class="chipbtn ghost" data-a="cochilo-del" data-id="${esc(c.id)}" aria-label="Apagar cochilo">✕</button></div>`; }).join('');
+  return `<p class="lbl" style="margin-top:16px">Cochilos</p>
+    <p class="note" style="margin-top:0">${lista.length} ${lista.length===1?'cochilo':'cochilos'}, ${tot<60?tot+' min':durTxt(tot)} no total (média de ${Math.round(med)} min).${med>60?' Cochilos longos podem deixar a noite mais leve: o ideal é até 30 min.':''}${tarde?` ${tarde} depois das 16h, o que pode atrasar o sono da noite.`:''}</p>
+    <div class="sn-hist">${itens}</div>`;
+}
+async function salvarAcordarSono(){
+  const v = ($('#sn-acordar')||{}).value || '';
+  if(v && !/^\d{2}:\d{2}$/.test(v)){ toast('Use o formato 06:30.', true); return; }
+  SONO.acordar = v; guardarCache(); sonoSheet();
+  try{ await D.salvarSonoAcordar(UID, v); toast(v ? 'Hora de deitar: '+horaDeitar()+'. Aviso 30 min antes, se as notificações estiverem ativas.' : 'Hora de acordar removida.'); }
+  catch(e){ toast('Salvo no aparelho. Confira a internet.', true); }
 }
 
 /* ----- 8. Temas ----- */
@@ -1245,6 +1408,7 @@ async function notifSheet(){
     ${ck('nt-reacoes', NOTIF.reacoes!==false, 'Quando reagirem ao meu treino')}
     ${ck('nt-resumo', NOTIF.resumo!==false, 'Resumo da semana no domingo à noite')}
     ${ck('nt-avisos', NOTIF.avisos!==false, 'Avisos do app (academia fechada, mudanças…)')}
+    ${ck('nt-sono', NOTIF.sono!==false, 'Sono: hora de deitar e lembrete de registrar de manhã')}
     ${ck('nt-lem', !!LEM_HORA && NOTIF.lembrete!==false, 'Lembrete nos dias de treino')}
     <label class="lbl-in nt-hora"><span>Horário do lembrete</span><input class="inp" id="nt-hora" type="time" value="${esc(LEM_HORA || LS.get('mt.lembrete', {h:'18:00'}).h || '18:00')}"></label>
     <p class="note">O lembrete chega só nos dias que têm treino na ficha, e não chega se você já treinou. Vale para todos os seus aparelhos.</p>
@@ -1284,7 +1448,7 @@ async function salvarNotif(){
   const v = id => { const el = $('#'+id); return el ? el.checked : true; };
   const hora = ($('#nt-hora') && $('#nt-hora').value) || '';
   const lem = v('nt-lem');
-  const notif = { grupo: v('nt-grupo'), reacoes: v('nt-reacoes'), lembrete: lem, resumo: v('nt-resumo'), avisos: v('nt-avisos') };
+  const notif = { grupo: v('nt-grupo'), reacoes: v('nt-reacoes'), lembrete: lem, resumo: v('nt-resumo'), avisos: v('nt-avisos'), sono: v('nt-sono') };
   try{
     await D.salvarPrefsNotif(UID, notif, lem ? hora : null);
     NOTIF = notif; LEM_HORA = lem ? hora : '';
@@ -2070,6 +2234,7 @@ function vSessao(){
       <button class="iconbtn${S.sound?'':' off'}" data-a="sound" aria-label="${S.sound?'Desligar':'Ligar'} som do descanso">${S.sound?ICON.sound:ICON.mute}</button>
     </div><div class="prog"><i id="prog-bar"></i></div></div>
     <div id="vivo-bar">${vivoBarra()}</div>
+    ${avisoSonoTreino()}
     ${blocoAquecimento(d.w)}
     <div class="exlist" style="margin-top:0">${ex}</div>
     <label class="lbl" for="notes">Observações</label>
@@ -3042,6 +3207,18 @@ document.addEventListener('click', async e=>{
     case 'sono-igual': sonoIgualUltima(); break;
     case 'sono-q': { const v = +t.dataset.v; S.sonoQ = S.sonoQ===v ? null : v; document.querySelectorAll('[data-a="sono-q"]').forEach(b=>{ const on = +b.dataset.v===S.sonoQ; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); break; }
     case 'sono-save': salvarSonoSheet(); break;
+    case 'sono-dormir': vouDormir(); break;
+    case 'sono-acordei': acordei(); break;
+    case 'sono-madrugada': acordeiMadrugada(); break;
+    case 'sono-voltei': volteiDormir(); break;
+    case 'sono-cancelar': cancelarAberta(); break;
+    case 'sono-aberta-ajustar': { const a = noiteAberta(); salvarAberta(null); sonoRegSheet(chaveDia(Date.now()), a ? { dormiu: horaDe(a.dormiu) } : null); break; }
+    case 'sono-bd-ok': bomDiaOk(t.dataset.d); break;
+    case 'sono-acordar': salvarAcordarSono(); break;
+    case 'cochilo': cochiloSheet(); break;
+    case 'cochilo-rapido': { const m = +t.dataset.m; salvarCochilo(Date.now() - m*60000, Date.now()); break; }
+    case 'cochilo-salvar': cochiloManual(); break;
+    case 'cochilo-del': apagarCochilo(t.dataset.id); break;
     case 'sono-pz-add': { const box = $('#sn-pausas'); if(box && box.children.length < 10){ box.insertAdjacentHTML('beforeend', linhaPausa('','')); const ins = box.lastElementChild.querySelector('input'); if(ins) ins.focus(); } break; }
     case 'sono-pz-del': { const r = t.closest('.sn-pr'); if(r) r.remove(); atualizarTotalSono(); break; }
     case 'sono-del': apagarSono(t.dataset.d); break;
@@ -3259,7 +3436,7 @@ async function carregar(silencioso){
     TEMA = d.tema || LS.get('mt.tema.'+UID, 'neon') || 'neon';
     { const pend = LS.get('mt.sono.pend.'+UID, {}), noites = Object.assign({}, d.sono || {});
       Object.entries(pend).forEach(([k,v])=>{ if(v) noites[k] = v; else delete noites[k]; });
-      SONO = { noites, meta: d.sonoMeta || null }; }
+      SONO = { noites, meta: d.sonoMeta || null, acordar: d.sonoAcordar || '' }; COCHILOS = Array.isArray(d.cochilos) ? d.cochilos : []; }
     FICHAS = d.fichas; definirFicha();
     CATALOGO = d.catalogo || []; prepararCatalogo(CATALOGO); autoCache.clear();
     VIDEOS = {}; (d.videos||[]).forEach(v=>{ VIDEOS[v.chave] = {nome:v.nome, video:v.video}; }); EDITOR = !!(d.editor || d.admin); ADMIN = !!d.admin; AVISOS = d.avisos || [];
@@ -3291,10 +3468,11 @@ async function carregar(silencioso){
 function abrirPeloLink(){
   try{
     const q = new URLSearchParams(location.search);
-    if(!q.has('card') && !q.has('v')) return;
+    if(!q.has('card') && !q.has('v') && !q.has('sono')) return;
     const card = q.get('card');
     history.replaceState(null, '', location.pathname);
     if(card==='semana' && FICHA && !S.draft) setTimeout(()=>abrirCompartilhar('semana', null, 'Sua semana'), 400);
+    if(q.get('sono')==='registrar' && !S.draft) setTimeout(()=>{ if(noiteAberta()) render(); else sonoRegSheet(); }, 400);
   }catch(e){}
 }
 // Mantém a cópia do aparelho em dia (para abrir sem internet)
@@ -3303,7 +3481,7 @@ function guardarCache(){
   const c = LS.get(kDados(), null); if(!c) return;
   const pend = new Set(S.pending.map(p=>p.id));
   Object.assign(c, { treinos:S.sessions.filter(x=>!pend.has(x.id)), peso:S.body, avaliacoes:S.measures, fotos:S.photos, fichas:FICHAS, nome:NOME, avatar:AVATAR, instagram:INSTA,
-    missoes:MISSOES, tema:TEMA, agua:AGUA.dias, aguaMeta:AGUA.manual, sono:SONO.noites, sonoMeta:SONO.meta,
+    missoes:MISSOES, tema:TEMA, agua:AGUA.dias, aguaMeta:AGUA.manual, sono:SONO.noites, sonoMeta:SONO.meta, sonoAcordar:SONO.acordar, cochilos:COCHILOS,
     videos:Object.entries(VIDEOS).map(([chave,v])=>({chave, nome:v.nome, video:v.video})) });
   LS.set(kDados(), c);
 }

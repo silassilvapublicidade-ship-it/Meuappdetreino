@@ -817,3 +817,29 @@ button.day:active{transform:scale(.96)}
 .sn-pr label span{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .sn-pr .inp{flex:none;height:46px}
 .sn-pr .chipbtn{min-height:46px;min-width:0;width:44px;padding:0}
+/* sono v2 */
+.sn-live{margin:10px 0 10px;padding:12px;border-radius:14px;background:rgba(120,110,255,.10);border:1px solid rgba(143,134,255,.35)}
+.sn-live p{margin:0 0 10px;font-size:14px;line-height:1.4}
+.sn-live.alerta{background:rgba(255,196,70,.09);border-color:rgba(255,196,70,.45)}
+.sn-live .ag-bts{margin:0}
+.chipbtn.big{min-height:44px;padding:0 16px;font-size:14px;background:rgba(143,134,255,.22);border-color:#8f86ff}
+.aviso.sn-tr{grid-template-columns:28px 1fr}
+.bd-top{text-align:center;margin-bottom:6px}
+.bd-top>span{font-size:40px;display:block}
+.bd-top h2{margin:4px 0 6px}
+.bd-top p{margin:0 0 6px}
+.tl{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+.tl-r{display:grid;grid-template-columns:44px 1fr 46px;gap:8px;align-items:center;background:none;border:0;padding:0;color:var(--ink);font:inherit;text-align:left;width:100%}
+.tl-d{font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap}
+.tl-v{font-size:12px;font-weight:800;text-align:right;white-space:nowrap}
+.tl-t{position:relative;height:16px;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden}
+.tl-h .tl-t{background:none;border:0;height:14px;overflow:visible}
+.tl-m span{position:absolute;top:0;transform:translateX(-50%);font-size:9px;color:var(--muted);font-weight:700}
+.tl-m span:first-child{transform:none}
+.tl-b,.tl-p,.tl-c{position:absolute;top:0;bottom:0;display:inline-block}
+.tl-b{background:linear-gradient(90deg,#7b6cff,#a99fff);border-radius:4px}
+.tl-p{background:#ffb648}
+.tl-c{background:var(--mint);border-radius:4px}
+.tl-leg{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tl-leg i{position:static;display:inline-block;width:12px;height:10px;border-radius:3px;margin-left:6px}
+.tl-leg i:first-child{margin-left:0}

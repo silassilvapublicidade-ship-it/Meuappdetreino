@@ -358,7 +358,10 @@ function render(){
   else if(v==='evolucao') html = vEvolucao();
   else if(v==='sessao') html = vSessao();
   else if(v==='admin') html = ADMIN ? vAdmin() : vHoje();
+  // campos marcados com data-manter sobrevivem a um render (ex.: aviso sendo digitado enquanto a lista carrega)
+  const manter = [...document.querySelectorAll('#app [data-manter]')].map(el=>[el.id, el.type==='checkbox' ? el.checked : el.value, document.activeElement===el]);
   $('#app').innerHTML = html;
+  manter.forEach(([id, v, foco])=>{ const el = document.getElementById(id); if(!el) return; if(el.type==='checkbox') el.checked = v; else el.value = v; if(foco) el.focus(); });
   const fora = ['carregando','auth','nova-senha','onboarding','ficha'].indexOf(v)>=0;
   document.body.classList.toggle('in-session', v==='sessao');
   document.body.classList.toggle('no-nav', fora);
@@ -2322,10 +2325,10 @@ function admConteudo(){
   const nv = Object.keys(VIDEOS).length;
   return `<section class="card"><h2 class="h2">Aviso para todos</h2>
       <p class="note" style="margin-top:0">Aparece no topo da tela Hoje de todo mundo. Cada pessoa pode fechar o seu.</p>
-      <textarea class="notes" id="av-txt" maxlength="400" placeholder="Ex.: Academia fechada no feriado de sexta. Treino D fica para sábado."></textarea>
-      <div class="frow2 lem" style="margin-top:10px"><label class="lbl-in"><span>Tipo</span><select class="inp" id="av-nivel"><option value="info">📣 Informação</option><option value="alerta">⚠️ Alerta</option><option value="festa">🎉 Comemoração</option></select></label>
-        <label class="lbl-in"><span>Fica no ar</span><select class="inp" id="av-dias"><option value="1">1 dia</option><option value="7" selected>7 dias</option><option value="30">30 dias</option><option value="0">Até eu tirar</option></select></label></div>
-      <label class="nt-ck" style="margin-top:10px"><input type="checkbox" id="av-push" checked> <span>Enviar também como notificação no celular</span></label>
+      <textarea class="notes" id="av-txt" data-manter maxlength="400" placeholder="Ex.: Academia fechada no feriado de sexta. Treino D fica para sábado."></textarea>
+      <div class="frow2 lem" style="margin-top:10px"><label class="lbl-in"><span>Tipo</span><select class="inp" id="av-nivel" data-manter><option value="info">📣 Informação</option><option value="alerta">⚠️ Alerta</option><option value="festa">🎉 Comemoração</option></select></label>
+        <label class="lbl-in"><span>Fica no ar</span><select class="inp" id="av-dias" data-manter><option value="1">1 dia</option><option value="7" selected>7 dias</option><option value="30">30 dias</option><option value="0">Até eu tirar</option></select></label></div>
+      <label class="nt-ck" style="margin-top:10px"><input type="checkbox" id="av-push" data-manter checked> <span>Enviar também como notificação no celular</span></label>
       <p class="note" style="margin-top:4px">Chega para todos que ativaram as notificações, inclusive você.</p>
       <button class="btn primary" data-a="adm-aviso" style="margin-top:12px">Publicar aviso</button>
       <h3 class="h3">Avisos</h3>${lista}</section>
@@ -2342,6 +2345,7 @@ async function publicarAviso(btn){
     const push = !!($('#av-push')||{}).checked;
     const a = await D.criarAviso({ texto, nivel: $('#av-nivel').value, expira: dias ? Date.now()+dias*864e5 : null, notificar: push });
     AVISOS = [a].concat(AVISOS); S.adm.avisos = [a].concat(S.adm.avisos||[]);
+    $('#av-txt').value = '';
     render(); toast(push ? 'Aviso publicado e enviado como notificação.' : 'Aviso publicado para todos.');
   }catch(e){ btn.disabled = false; toast('Não consegui publicar agora.', true); }
 }

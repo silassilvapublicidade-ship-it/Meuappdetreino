@@ -53,7 +53,10 @@ async def main():
         # avisos
         await pg.click('[data-a=adm-tab][data-t=conteudo]'); await pg.wait_for_selector('#av-txt')
         await pg.fill('#av-txt', 'Academia fechada na sexta (feriado). Treino D fica para sábado.')
-        await pg.select_option('#av-nivel', 'alerta'); await pg.click('[data-a=adm-aviso]'); await pg.wait_for_timeout(400)
+        await pg.select_option('#av-nivel', 'alerta'); await pg.click('[data-a=adm-aviso]')
+        for _ in range(40):
+            if fake.tables['app_avisos']: break
+            await pg.wait_for_timeout(100)
         print('aviso notificar:', fake.tables['app_avisos'][-1].get('notificar'), '| toast:', await pg.text_content('#toast'))
         print('avisos no banco:', [(a['texto'][:25], a['nivel']) for a in fake.tables['app_avisos']])
         await pg.screenshot(path=SH + 'a4-conteudo.png', full_page=True)

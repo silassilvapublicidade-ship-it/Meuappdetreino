@@ -15,7 +15,7 @@ async def main():
         await pg.fill('#a-nome','Silas Silva'); await pg.fill('#a-email','s@s.com'); await pg.fill('#a-senha','segredo123')
         await pg.click('#f-auth button[type=submit]'); await pg.wait_for_selector('.choices')
         await pg.click('[data-a=ob-modelo]'); await pg.wait_for_selector('#f-nome'); await pg.click('[data-a=f-save]'); await pg.wait_for_selector('.wcard')
-        await pg.click('[data-a=perfil]'); await pg.set_input_files('#f-avatar','/mnt/user-data/uploads/dc4169f4-image.jpg'); await pg.wait_for_selector('.perfil-h img[src]', timeout=8000)
+        await pg.click('[data-a=perfil]'); await pg.set_input_files('#f-avatar',FIX + '/foto1.jpg'); await pg.wait_for_selector('.perfil-h img[src]', timeout=8000)
         await pg.fill('#p-insta','@silassilva.click'); await pg.click('[data-a=p-save]'); await pg.wait_for_timeout(300)
         print('perfil:', fake.tables['profiles'])
         await pg.click('[data-a=perfil]'); await pg.wait_for_timeout(500); await pg.screenshot(path=SHOTS+'p1.png'); await pg.click('[data-a=close]')

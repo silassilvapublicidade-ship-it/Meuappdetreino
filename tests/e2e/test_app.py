@@ -5,7 +5,7 @@ from playwright.async_api import async_playwright
 from fake_supabase import Fake, BASE
 
 APP = APP
-FICHA_IMG = '/mnt/user-data/uploads/c654fc24-image.jpg'
+FICHA_IMG = FIX + '/foto0.jpg'
 
 
 async def main():

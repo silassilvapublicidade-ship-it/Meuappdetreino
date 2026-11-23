@@ -1,9 +1,9 @@
-import '@fontsource/montserrat/500.css';
-import '@fontsource/montserrat/600.css';
-import '@fontsource/montserrat/700.css';
-import '@fontsource/montserrat/800.css';
-import '@fontsource/montserrat/900.css';
-import '@fontsource/bebas-neue/400.css';
+import '@fontsource/montserrat/latin-500.css';
+import '@fontsource/montserrat/latin-600.css';
+import '@fontsource/montserrat/latin-700.css';
+import '@fontsource/montserrat/latin-800.css';
+import '@fontsource/montserrat/latin-900.css';
+import '@fontsource/bebas-neue/latin-400.css';
 import './style.css';
 import {
   LETRAS, DIAS, SEMANA, WD, FICHA_MODELO, MKEYS, MORDER, MHEAD, MMANUAL, POSES,
@@ -17,7 +17,9 @@ import { sequencia, missoesDaSemana, TEMAS, aplicarTema, metaAgua, litros } from
 import { suportaPush, ehIOS, instalado as pwaInstalado, permissao, assinaturaAtual, assinar, cancelar as cancelarPush } from './push.js';
 import * as D from './dados.js';
 import { suportaVoz, interpretar, ouvir } from './voz.js';
-import { desenharSemana, desenharMes, desenharConquista, desenharAntesDepois, desenharRetrospectiva, desenharEvolucao } from './cartao.js';
+// os cards de story só carregam quando alguém vai compartilhar
+let cartaoMod = null;
+const cartao = () => cartaoMod || (cartaoMod = import('./cartao.js').catch(e=>{ cartaoMod = null; throw e; }));
 import { seriesPorExercicio, indiceForca, indiceEm, recordes, evolucaoExercicios, MUSCULOS, musculosDe, seriesPorMusculo, nivelMusculo, previsaoPeso, previsoesForca, periodo, cruzamentos } from './evolucao.js';
 
 /* ---------- Utilidades ---------- */
@@ -3616,6 +3618,7 @@ async function abrirCompartilhar(tipo, ref, titulo, conquista){
     <button class="btn ghost" data-a="close">Fechar</button></div>`);
   try{
     const foto = await fotoParaCartao();
+    const { desenharSemana, desenharMes, desenharConquista, desenharAntesDepois, desenharRetrospectiva, desenharEvolucao } = await cartao();
     const canvas = tipo==='antesdepois' ? await desenharAntesDepois(Object.assign(await dadosAntesDepois(), {foto}))
       : tipo==='retro' ? await desenharRetrospectiva(Object.assign(dadosRetrospectiva(CARD.ano), {foto}))
       : tipo==='conquista' && CARD.conquista ? await desenharConquista(Object.assign(dadosConquista(CARD.conquista), {foto}))
@@ -3928,19 +3931,38 @@ window.addEventListener('offline', ()=>{ if(UID){ S.sync = 'offline'; renderStat
 
 /* ---------- Início ---------- */
 function comPrazo(p, ms){ return Promise.race([p, new Promise((_, rej)=>setTimeout(()=>rej(new Error('tempo')), ms))]); }
+// Abre na hora com os dados guardados no aparelho e atualiza com a nuvem logo em seguida
 async function carregar(silencioso){
-  if(!silencioso){ S.view = 'carregando'; render(); }
+  let mostrouCache = false, cacheTxt = '';
+  if(!silencioso){
+    const c = LS.get(kDados(), null);
+    if(c && Array.isArray(c.fichas) && Array.isArray(c.treinos)){
+      try{ cacheTxt = JSON.stringify(c); aplicarDados(c, false, false, true); mostrouCache = true; }catch(e){ mostrouCache = false; }
+      if(mostrouCache && !navigator.onLine){ S.offline = true; S.sync = 'offline'; renderStatus(); toast('Sem internet: usando os dados guardados no aparelho. O treino é salvo quando a conexão voltar.'); }
+    }
+    if(!mostrouCache){ S.view = 'carregando'; render(); }
+  }
   let d, doAparelho = false;
   try{
     d = await comPrazo(D.carregarTudo(UID), 15000);
     LS.set(kDados(), d);
   }catch(e){
+    if(mostrouCache){
+      const ja = S.sync === 'offline'; S.offline = true; S.sync = 'offline'; renderStatus();
+      if(!ja) toast('Sem internet: usando os dados guardados no aparelho. O treino é salvo quando a conexão voltar.');
+      return;
+    }
     d = LS.get(kDados(), null); doAparelho = true;
     if(!d){
       if(!silencioso){ S.loadErr = 'Confira a internet e tente de novo.'; S.view = 'carregando'; render(); }
       return;
     }
   }
+  // nada mudou desde o que já está na tela: só faz as tarefas de fundo, sem redesenhar
+  const igual = mostrouCache && JSON.stringify(d) === cacheTxt;
+  aplicarDados(d, doAparelho, silencioso || mostrouCache, false, igual);
+}
+function aplicarDados(d, doAparelho, silencioso, doCache, semRedesenhar){
   S.offline = doAparelho;
   try{
     NOME = d.nome || NOME; AVATAR = d.avatar; INSTA = d.instagram; AVATAR_IMG = null; METAS = d.metas || METAS; NOTIF = d.notif || NOTIF; LEM_HORA = d.lembreteHora || '';
@@ -3948,7 +3970,7 @@ async function carregar(silencioso){
     AGUA = { dias: Object.assign({}, d.agua || {}, LS.get('mt.agua.pend.'+UID, {})), manual: d.aguaMeta || null };
     TEMA = d.tema || LS.get('mt.tema.'+UID, 'neon') || 'neon';
     INICIO = normalizarInicio(d.inicio || LS.get('mt.inicio.'+UID, null));
-    if(!doAparelho) mesclarAberta(d.sonoAberta);
+    if(!doAparelho && !doCache) mesclarAberta(d.sonoAberta);
     { const pend = LS.get('mt.sono.pend.'+UID, {}), noites = Object.assign({}, d.sono || {});
       Object.entries(pend).forEach(([k,v])=>{ if(v) noites[k] = v; else delete noites[k]; });
       SONO = { noites, meta: d.sonoMeta || null, acordar: d.sonoAcordar || '' }; COCHILOS = Array.isArray(d.cochilos) ? d.cochilos : []; }
@@ -3960,25 +3982,28 @@ async function carregar(silencioso){
     S.pending = S.pending.filter(p=>!ids.has(p.id)); LS.set(kPending(), S.pending);
     S.sessions = d.treinos.concat(S.pending).sort((a,b)=>b.start-a.start);
     S.body = d.peso; S.measures = d.avaliacoes; S.photos = d.fotos;
-    const local = S.draft || LS.get(kDraft(), null);
+    const local = LS.get(kDraft(), null);
     const nuvem = d.rascunho;
     S.draft = (local && (!nuvem || (local.at||0) >= (nuvem.at||0))) ? local : nuvem;
     if(S.draft && (!S.draft.w || !S.draft.ex)) S.draft = null;
     if(!silencioso || S.view==='carregando') S.view = !FICHA ? 'onboarding' : (S.draft && Date.now()-S.draft.start < 4*3600*1000 ? 'sessao' : 'hoje');
     if(doAparelho){ S.sync = 'offline'; }
-    if(!silencioso || S.view!=='sessao') render(); else renderStatus();
+    if(semRedesenhar) renderStatus();
+    else if(!silencioso || S.view!=='sessao') render(); else renderStatus();
+    if(doCache){ aplicarTemaAtual(); abrirPeloLink(); return; }
     if(doAparelho){ if(!silencioso) toast('Sem internet: usando os dados guardados no aparelho. O treino é salvo quando a conexão voltar.'); }
     else { S.sync = 'ok'; enviarPendentes(); sincronizarAparelho(); salvarAguaDepois(); enviarSonoPendente().catch(()=>{}); if(LS.get('mt.missoes.pend.'+UID, false)) D.salvarMissoes(UID, MISSOES).then(()=>LS.set('mt.missoes.pend.'+UID, false)).catch(()=>{}); }
-    // tema: só vale se o nível já liberou
-    { const t = TEMAS.find(x=>x.id===TEMA); aplicarTema(t ? TEMA : 'neon'); }
+    aplicarTemaAtual();
     verificarMissoes(false);
     carregarGrupo();
     abrirPeloLink();
   }catch(e){
+    if(doCache) throw e;
     S.loadErr = 'Não consegui abrir seus dados. Tente de novo.';
     S.view = 'carregando'; render();
   }
 }
+function aplicarTemaAtual(){ const t = TEMAS.find(x=>x.id===TEMA); aplicarTema(t ? TEMA : 'neon'); }
 // Links das notificações: ?card=semana abre o card da semana
 function abrirPeloLink(){
   try{
@@ -4034,6 +4059,8 @@ function sairLocal(){
 }
 function iniciar(){
   if(!D.configurado){ S.view='auth'; render(); return; }
+  // quem já entrou neste aparelho vê o app na hora, sem esperar o login ser renovado na internet
+  { const u = usuarioGuardado(); if(u && LS.get('mt.dados.'+u.id, null)) entrar(u); }
   D.sb.auth.onAuthStateChange((evento, sessao)=>{
     // não chamar o Supabase dentro deste callback (pode travar); adiar
     setTimeout(()=>{
@@ -4043,6 +4070,7 @@ function iniciar(){
       else if(evento==='INITIAL_SESSION'){
         const u = !navigator.onLine ? usuarioGuardado() : null;
         if(u && LS.get('mt.dados.'+u.id, null)) entrar(u);
+        else if(UID) sairLocal();
         else { S.view='auth'; render(); }
       }
     }, 0);
@@ -4057,6 +4085,8 @@ if(import.meta.env.PROD && 'serviceWorker' in navigator){
     try{
       await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
+      // carrega os cards de story agora (depois de abrir) para entrarem na cópia offline
+      await cartao().catch(()=>{});
       // guarda os arquivos desta versão do app e limpa os de versões antigas
       const atuais = performance.getEntriesByType('resource').map(r=>r.name)
         .filter(u=>{ try{ const x = new URL(u); return x.origin===location.origin && (/^\/assets\//.test(x.pathname) || /\.(png|webmanifest)$/.test(x.pathname)); }catch(e){ return false; } });

@@ -7,5 +7,13 @@ if(!sha){ try{ sha = execSync('git rev-parse HEAD').toString().trim(); }catch(e)
 const quando = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 export default defineConfig({
-  define: { __VERSAO__: JSON.stringify(sha.slice(0, 7) + ' · ' + quando) }
+  define: { __VERSAO__: JSON.stringify(sha.slice(0, 7) + ' · ' + quando) },
+  build: {
+    rollupOptions: {
+      output: {
+        // biblioteca do Supabase em arquivo separado: muda pouco, então fica guardada no celular entre as atualizações do app
+        manualChunks(id){ if(id.includes('node_modules/@supabase') || id.includes('node_modules/tslib') || id.includes('node_modules/iceberg-js')) return 'supabase'; }
+      }
+    }
+  }
 });

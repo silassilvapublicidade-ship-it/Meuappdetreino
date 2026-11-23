@@ -17,14 +17,15 @@ export function linhaParaTreino(r){
     id: r.id, planId: r.plan_id, letter: r.letter, wname: r.workout_name || '',
     start: Date.parse(r.started_at), end: r.ended_at ? Date.parse(r.ended_at) : null,
     dur: r.dur_s || 0, notes: r.notes || '', ex: Array.isArray(r.ex) ? r.ex : [],
-    vol: r.vol || 0, done: r.sets_done || 0, total: r.sets_total || 0
+    vol: r.vol || 0, done: r.sets_done || 0, total: r.sets_total || 0, esforco: r.esforco || null, dor: Array.isArray(r.dor) ? r.dor : []
   };
 }
 function treinoParaLinha(uid, s){
   return {
     id: s.id, user_id: uid, plan_id: s.planId || null, letter: s.letter, workout_name: s.wname || null,
     started_at: new Date(s.start).toISOString(), ended_at: s.end ? new Date(s.end).toISOString() : null,
-    dur_s: s.dur || 0, notes: s.notes || null, ex: s.ex || [], vol: s.vol || 0, sets_done: s.done || 0, sets_total: s.total || 0
+    dur_s: s.dur || 0, notes: s.notes || null, ex: s.ex || [], vol: s.vol || 0, sets_done: s.done || 0, sets_total: s.total || 0,
+    esforco: s.esforco || null, dor: s.dor && s.dor.length ? s.dor : null
   };
 }
 function linhaParaFicha(r){
@@ -36,7 +37,7 @@ function linhaParaFicha(r){
 export async function carregarTudo(uid){
   const desde = new Date(Date.now() - 70*864e5).toISOString().slice(0,10);
   const [perfil, fichas, treinos, peso, aval, fotos, rascunho, videos, editor, admin, avisos, catalogo, agua, sono, cochilos] = await Promise.all([
-    sb.from('profiles').select('nome,avatar_path,instagram,meta_peso,meta_gordura,meta_data,notif,lembrete_hora,missoes,tema,agua_meta,sono_meta,sono_acordar,inicio').eq('id', uid).maybeSingle().then(ok),
+    sb.from('profiles').select('nome,avatar_path,instagram,meta_peso,meta_gordura,meta_data,notif,lembrete_hora,missoes,tema,agua_meta,sono_meta,sono_acordar,inicio,sono_aberta').eq('id', uid).maybeSingle().then(ok),
     sb.from('plans').select('*').order('created_at', { ascending: true }).then(ok),
     sb.from('sessions').select('*').order('started_at', { ascending: false }).limit(1000).then(ok),
     sb.from('body_weights').select('d,kg').order('d', { ascending: true }).then(ok),
@@ -56,7 +57,7 @@ export async function carregarTudo(uid){
     nome: perfil && perfil.nome || '',
     avatar: perfil && perfil.avatar_path || '',
     instagram: perfil && perfil.instagram || '',
-    notif: Object.assign({ grupo: true, reacoes: true, lembrete: true, resumo: true, avisos: true, sono: true }, perfil && perfil.notif || {}),
+    notif: Object.assign({ grupo: true, reacoes: true, lembrete: true, resumo: true, avisos: true, sono: true, fotos: true }, perfil && perfil.notif || {}),
     missoes: perfil && Array.isArray(perfil.missoes) ? perfil.missoes : [],
     tema: perfil && perfil.tema || '',
     aguaMeta: perfil && perfil.agua_meta || null,
@@ -65,6 +66,7 @@ export async function carregarTudo(uid){
     sonoMeta: perfil && perfil.sono_meta || null,
     sonoAcordar: perfil && perfil.sono_acordar || '',
     inicio: perfil && perfil.inicio || null,
+    sonoAberta: perfil && perfil.sono_aberta || null,
     cochilos: (cochilos || []).map(c => ({ id: c.id, dia: c.dia, ini: c.ini, fim: c.fim })),
     lembreteHora: perfil && perfil.lembrete_hora ? String(perfil.lembrete_hora).slice(0,5) : '',
     metas: { peso: perfil && perfil.meta_peso != null ? Number(perfil.meta_peso) : null, gordura: perfil && perfil.meta_gordura != null ? Number(perfil.meta_gordura) : null, data: perfil && perfil.meta_data || null },
@@ -221,6 +223,8 @@ export async function salvarSono(uid, dia, n){
   if(!n){ ok(await sb.from('sono').delete().eq('user_id', uid).eq('dia', dia)); return; }
   ok(await sb.from('sono').upsert({ user_id: uid, dia, dormiu: new Date(n.dormiu).toISOString(), acordou: new Date(n.acordou).toISOString(), qualidade: n.q || null, obs: n.obs || null, pausas: (n.pausas || []).map(p => Object.assign({ ini: new Date(p.ini).toISOString(), fim: new Date(p.fim).toISOString() }, p.aprox ? { aprox: true } : {})), updated_at: new Date().toISOString() }, { onConflict: 'user_id,dia' }));
 }
+export async function lerSonoAberta(uid){ const r = ok(await sb.from('profiles').select('sono_aberta').eq('id', uid).maybeSingle()); return r ? r.sono_aberta : null; }
+export async function salvarSonoAberta(uid, a){ ok(await sb.from('profiles').update({ sono_aberta: a }).eq('id', uid)); }
 export async function salvarInicio(uid, inicio){ ok(await sb.from('profiles').update({ inicio }).eq('id', uid)); }
 export async function salvarSonoAcordar(uid, hhmm){ ok(await sb.from('profiles').update({ sono_acordar: hhmm || null }).eq('id', uid)); }
 export async function criarCochilo(uid, c){ return ok(await sb.from('sono_cochilos').insert({ user_id: uid, dia: c.dia, ini: new Date(c.ini).toISOString(), fim: new Date(c.fim).toISOString() }).select('id,dia,ini,fim').single()); }
@@ -234,7 +238,6 @@ export async function salvarAparelho(uid, sub){
 }
 export async function apagarAparelho(endpoint){ if(endpoint) ok(await sb.from('push_subs').delete().eq('endpoint', endpoint)); }
 export async function testeNotif(){ const { error } = await sb.functions.invoke('notificar', { body: { tipo: 'teste' } }); if(error) throw error; }
-export async function aparelhosAtivos(uid){ const { count } = await sb.from('push_subs').select('endpoint', { count: 'exact', head: true }).eq('user_id', uid); return count || 0; }
 export async function salvarPrefsNotif(uid, notif, hora){
   ok(await sb.from('profiles').update({ notif, lembrete_hora: hora || null, lembrete_ultimo: null }).eq('id', uid));
 }

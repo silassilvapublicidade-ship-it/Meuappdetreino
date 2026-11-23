@@ -1,0 +1,43 @@
+name: Testes do app
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Servir o app
+        run: |
+          npx vite preview --host 127.0.0.1 --port 4173 &
+          npx --yes wait-on@8 http://127.0.0.1:4173/ --timeout 60000
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar Playwright
+        run: |
+          pip install playwright==1.63.0
+          python -m playwright install --with-deps chromium
+      - name: Rodar os testes
+        run: python tests/e2e/run_all.py
+      - name: Guardar as capturas de tela
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas
+          path: tests/e2e/shots/
+          retention-days: 7

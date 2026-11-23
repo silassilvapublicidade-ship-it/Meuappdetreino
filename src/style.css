@@ -947,3 +947,29 @@ button.day:active{transform:scale(.96)}
 .fchips.wrap{flex-wrap:wrap;overflow:visible}
 .sn-modo{display:block;margin-top:8px;font-size:13px}
 .tl-p.ap{background:repeating-linear-gradient(90deg,#ffb648 0 3px,transparent 3px 5px)}
+/* família */
+.fam-sab{display:flex;align-items:center;gap:12px;margin-bottom:12px;background:linear-gradient(135deg,rgba(var(--mint-rgb),.14),transparent 70%),var(--panel)}
+.fam-sab-i{font-size:30px;flex:none}
+.fam-sab>div:nth-child(2){flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.fam-sab small{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--mint)}
+.fam-sab b{font-size:15px}
+.fam-sab span{font-size:13px;color:var(--muted)}
+.fam-sab .btn{flex:none;width:auto;padding:0 16px}
+.fam-vazio{margin-bottom:12px}
+.pts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 4px}
+.pts span{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;border-radius:12px;background:var(--panel-2);border:1px solid var(--line);text-align:center}
+.pts b{font-family:var(--display);font-size:22px}
+.pts small{font-size:11px;color:var(--muted);line-height:1.25}
+button.lvl-fire{border:0;background:none;color:inherit;font:inherit;cursor:pointer}
+.ex-acts{display:flex;gap:8px}
+.ex-acts .addset{flex:1}
+.addset.voz{border-style:solid;border-color:rgba(var(--cyan-rgb),.45);color:var(--ink)}
+.addset.voz.on{background:rgba(255,93,108,.15);border-color:#ff5d6c}
+.ph.slot{position:relative;overflow:hidden}
+.ph.slot img.fantasma{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.28;filter:grayscale(1)}
+.ph.slot i{z-index:1}
+.ph.slot span{z-index:1}
+.ph.slot span small{display:block;font-size:9.5px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--muted);margin-top:2px}
+.guia{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--panel-2);border:1px solid var(--line);font-size:13px}
+.guia summary{font-weight:800;cursor:pointer}
+.guia ul{margin:8px 0 0;padding-left:18px;color:var(--muted);line-height:1.5}

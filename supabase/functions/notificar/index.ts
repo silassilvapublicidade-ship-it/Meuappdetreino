@@ -75,7 +75,7 @@ async function enviar(usuarios: string[], msg: Msg) {
   return ok;
 }
 
-async function querem(usuarios: string[], chave: "grupo" | "reacoes" | "lembrete" | "resumo" | "avisos" | "sono") {
+async function querem(usuarios: string[], chave: "grupo" | "reacoes" | "lembrete" | "resumo" | "avisos" | "sono" | "fotos") {
   if (!usuarios.length) return [];
   const { data } = await sb.from("profiles").select("id,notif").in("id", usuarios);
   const fora = new Set((data || []).filter((p) => p.notif && p.notif[chave] === false).map((p) => p.id));
@@ -178,14 +178,15 @@ async function sonoAvisos() {
   const { data: subs } = await sb.from("push_subs").select("user_id");
   const ids = [...new Set((subs || []).map((x) => x.user_id))];
   if (!ids.length) return 0;
-  const { data: perfis } = await sb.from("profiles").select("id,notif,sono_meta,sono_acordar,sono_deitar_ultimo,sono_manha_ultimo").in("id", ids);
+  const { data: perfis } = await sb.from("profiles").select("id,notif,sono_meta,sono_acordar,sono_deitar_ultimo,sono_manha_ultimo,sono_aberta").in("id", ids);
   let enviados = 0;
   for (const p of perfis || []) {
     if (p.notif && p.notif.sono === false) continue;
     const meta = p.sono_meta || 480;
     const acordar = p.sono_acordar ? (() => { const [h, m] = String(p.sono_acordar).split(":").map(Number); return h * 60 + m; })() : null;
-    // noite: 30 min antes da hora ideal de deitar
-    if (acordar != null && p.sono_deitar_ultimo !== agora.data) {
+    const aberta = p.sono_aberta && !p.sono_aberta.fechada && p.sono_aberta.dormiu;
+    // noite: 30 min antes da hora ideal de deitar (se já marcou "Vou dormir", não avisa)
+    if (acordar != null && !aberta && p.sono_deitar_ultimo !== agora.data) {
       const deitar = acordar - meta;
       if (naJanela(agora.min, deitar - 30)) {
         await sb.from("profiles").update({ sono_deitar_ultimo: agora.data }).eq("id", p.id);
@@ -202,6 +203,10 @@ async function sonoAvisos() {
     if (p.sono_manha_ultimo !== agora.data && naJanela(agora.min, alvoManha)) {
       await sb.from("profiles").update({ sono_manha_ultimo: agora.data }).eq("id", p.id);
       const desde = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
+      if (aberta) {
+        enviados += await enviar([p.id], { title: "Bom dia! ☀️", body: "Você marcou \"Vou dormir\" ontem. Toque em \"Acordei\" para fechar a noite.", url: "/?acao=sono", tag: "sono-manha" });
+        continue;
+      }
       const { count: usa } = await sb.from("sono").select("dia", { count: "exact", head: true }).eq("user_id", p.id).gte("dia", desde);
       if (!usa) continue;
       const { count: hoje } = await sb.from("sono").select("dia", { count: "exact", head: true }).eq("user_id", p.id).eq("dia", agora.data);
@@ -213,6 +218,27 @@ async function sonoAvisos() {
         tag: "sono-manha",
       });
     }
+  }
+  return enviados;
+}
+
+// Fotos do mês: dia 1, às 10h, para quem treina e não tira foto há mais de 25 dias
+async function fotosMes() {
+  const agora = agoraLocal();
+  if (!agora.data.endsWith("-01") || !naJanela(agora.min, 10 * 60)) return 0;
+  const { data: subs } = await sb.from("push_subs").select("user_id");
+  const ids = await querem([...new Set((subs || []).map((x) => x.user_id))], "fotos");
+  let enviados = 0;
+  for (const uid of ids) {
+    const { data: p } = await sb.from("profiles").select("fotos_aviso_ultimo").eq("id", uid).maybeSingle();
+    if (p?.fotos_aviso_ultimo === agora.data) continue;
+    await sb.from("profiles").update({ fotos_aviso_ultimo: agora.data }).eq("id", uid);
+    const { count: treinos } = await sb.from("sessions").select("id", { count: "exact", head: true }).eq("user_id", uid);
+    if ((treinos || 0) < 4) continue;
+    const desde = new Date(Date.now() - 25 * 864e5).toISOString().slice(0, 10);
+    const { count: recentes } = await sb.from("photos").select("id", { count: "exact", head: true }).eq("user_id", uid).gte("d", desde);
+    if (recentes) continue;
+    enviados += await enviar([uid], { title: "Dia das fotos do mês 📸", body: "Frente, lado e costas, com a mesma luz de sempre. Em um mês dá para ver a diferença.", url: "/?acao=fotos", tag: "fotos-mes" });
   }
   return enviados;
 }
@@ -312,7 +338,7 @@ Deno.serve(async (req) => {
     if (corpo.tipo === "treino" && corpo.id) n = await treinoTerminado(corpo.id);
     else if (corpo.tipo === "reacao" && corpo.id) n = await reacao(corpo.id);
     else if (corpo.tipo === "aviso" && corpo.id) n = await aviso(corpo.id);
-    else if (corpo.tipo === "lembretes") n = (await lembretes()) + (await sonoAvisos());
+    else if (corpo.tipo === "lembretes") n = (await lembretes()) + (await sonoAvisos()) + (await fotosMes());
     else if (corpo.tipo === "resumo" && corpo.previa) { const pv: Msg[] = []; await resumo(pv); return Response.json({ ok: true, previa: pv }); }
     else if (corpo.tipo === "resumo") n = await resumo();
     else return new Response("tipo", { status: 400 });

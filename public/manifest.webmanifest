@@ -10,8 +10,73 @@
   "theme_color": "#050a0e",
   "lang": "pt-BR",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Começar treino",
+      "short_name": "Treinar",
+      "url": "/?acao=treino",
+      "icons": [
+        {
+          "src": "/atalho-treino.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Beber água (+250 ml)",
+      "short_name": "Água",
+      "url": "/?acao=agua",
+      "icons": [
+        {
+          "src": "/atalho-agua.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Vou dormir / Acordei",
+      "short_name": "Sono",
+      "url": "/?acao=sono",
+      "icons": [
+        {
+          "src": "/atalho-sono.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Registrar peso",
+      "short_name": "Peso",
+      "url": "/?acao=peso",
+      "icons": [
+        {
+          "src": "/atalho-peso.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
   ]
 }

@@ -75,6 +75,7 @@ let UID = null, EMAIL = '', NOME = '', AVATAR = '', INSTA = '';
 let AVATAR_IMG = null; // imagem já baixada para os cartões
 let FICHAS = [];          // fichas do usuário (como vêm do banco)
 let FICHA = null;         // ficha ativa preparada: {id, nome, order, W, sched}
+let EXTRAS = [];          // fichas usadas junto com a principal (ex.: a do Renan), preparadas igual
 let VIDEOS = {};          // biblioteca de vídeos: chave do exercício -> {nome, video}
 let EDITOR = false;       // só o editor (Silas) cadastra os links de vídeo
 let ADMIN = false;        // acesso à área do admin
@@ -189,10 +190,14 @@ document.addEventListener('click', e=>{
 }, true);
 
 function definirFicha(){
-  const ativa = FICHAS.find(f=>f.ativa) || FICHAS[FICHAS.length-1] || null;
-  if(!ativa){ FICHA = null; return; }
+  const ativa = FICHAS.find(f=>f.ativa && !f.extra) || FICHAS.find(f=>f.ativa) || FICHAS[FICHAS.length-1] || null;
+  if(!ativa){ FICHA = null; EXTRAS = []; return; }
   FICHA = Object.assign({ id:ativa.id, nome:ativa.nome, criada:ativa.criada||null }, prepararFicha(ativa));
+  EXTRAS = FICHAS.filter(f=>f.ativa && f.extra && f.id!==ativa.id).map(f=>Object.assign({ id:f.id, nome:f.nome, criada:f.criada||null, extra:true }, prepararFicha(f))).filter(f=>f.order.length);
 }
+function fichaPorId(id){ return !id || !FICHA || id===FICHA.id ? FICHA : EXTRAS.find(f=>f.id===id) || null; }
+// rótulo de um treino de ficha extra: "Renan · A"
+function rotuloFicha(planId){ const f = planId && FICHA && planId!==FICHA.id ? EXTRAS.find(x=>x.id===planId) : null; return f ? f.nome : ''; }
 function nomeDeChave(){
   const N = {};
   S.sessions.forEach(s=>(s.ex||[]).forEach(e=>(e.keys||[]).forEach((k,i)=>{ if(!N[k]) N[k] = (e.parts||[e.n])[i] || e.n; })));
@@ -234,13 +239,13 @@ function nextLetter(){
   return FICHA.order[(FICHA.order.indexOf(last.letter)+1)%FICHA.order.length];
 }
 // Quantas vezes cada treino da ficha foi feito e quando foi a última
-function execucoes(L){
-  const lista = sessionsDaFicha().filter(s=>s.letter===L);
+function execucoes(L, F){
+  F = F || FICHA; const lista = F ? S.sessions.filter(s=>s.planId===F.id && s.letter===L) : [];
   return { n: lista.length, ultima: lista.length ? lista[0].start : null };
 }
 function dataCompleta(ts){ return new Date(ts).toLocaleDateString('pt-BR'); }
-function linhaExecucoes(L){
-  const x = execucoes(L);
+function linhaExecucoes(L, F){
+  const x = execucoes(L, F);
   return x.n ? `Executado <b>${x.n}</b> ${x.n===1?'vez':'vezes'}, última em <b>${dataCompleta(x.ultima)}</b>` : 'Ainda não executado nesta ficha';
 }
 // Escolher outro treino para hoje (ex.: academia lotada)
@@ -259,11 +264,15 @@ function trocarTreinoSheet(){
   openSheet(`<h2>Escolher o treino de hoje</h2>
     <p>Academia lotada ou equipamento ocupado? Faça qualquer treino da ficha. O app guarda o que ficou para trás e sugere ele no próximo dia.</p>
     <div class="tt-list">${itens}</div>
+    ${EXTRAS.map(F=>`<p class="lbl tt-ficha">📋 ${esc(F.nome)}</p><div class="tt-list">${F.order.map(L=>{ const W = F.W[L], x = execucoes(L, F), feito = x.ultima && x.ultima >= startOfWeek(Date.now());
+      return `<div class="tt${feito?' feito':''}"><div class="tt-l neon" aria-hidden="true">${esc(L)}</div>
+        <div class="tt-i"><b>${esc(W.name)}</b><small>${W.ex.length} exercícios</small><small class="exec">${linhaExecucoes(L, F)}</small>${feito?'<span class="tt-st ok">✓ feito nesta semana</span>':''}</div>
+        <div class="tt-b"><button class="btn sm" data-a="start" data-l="${esc(L)}" data-p="${esc(F.id)}">Começar</button><button class="btn sm ghost" data-a="go-close" data-v="treino:${esc(L)}@${esc(F.id)}">Ver</button></div></div>`; }).join('')}</div>`).join('')}
     <div class="btns" style="margin-top:12px"><button class="btn ghost" data-a="close">Fechar</button></div>`);
 }
-function newDraft(L){
-  const W = FICHA.W[L];
-  return { planId:FICHA.id, letter:L, w:copia(W), start:Date.now(), at:Date.now(), lastSetAt:0, notes:'',
+function newDraft(L, F){
+  F = F || FICHA; const W = F.W[L];
+  return { planId:F.id, letter:L, w:copia(W), start:Date.now(), at:Date.now(), lastSetAt:0, notes:'',
     ex: W.ex.map(e=>({ sets: Array.from({length:e.s}, ()=>({done:false, p:e.parts.map(()=>({kg:'',r:''}))})) })) };
 }
 function countDone(d){ let sets=0,total=0; d.ex.forEach(e=>e.sets.forEach(s=>{ total++; if(s.done) sets++; })); return {sets,total}; }
@@ -355,7 +364,7 @@ function render(){
   else if(v==='hoje') html = vHoje();
   else if(v==='treinos') html = comAbasTreinos(S.trTab==='historico' ? vHistorico() : vTreinos());
   else if(v==='familia') html = vFamilia();
-  else if(v.indexOf('treino:')===0) html = vTreino(v.slice(7));
+  else if(v.indexOf('treino:')===0){ const [L, id] = v.slice(7).split('@'); html = vTreino(L, id); }
   else if(v==='historico'){ S.view = 'treinos'; S.trTab = 'historico'; html = comAbasTreinos(vHistorico()); }
   else if(v==='evolucao') html = vEvolucao();
   else if(v==='sessao') html = vSessao();
@@ -1427,7 +1436,7 @@ function acoesRapidas(){
     sono,
     ['cochilo','💤','Cochilo'],
     ['peso-rapido','⚖️','Peso'],
-    FICHA && FICHA.order.length>1 && !S.draft ? ['trocar-treino','⇄','Outro treino'] : ['evo','📈','Evolução',' data-t="cargas"'],
+    FICHA && (FICHA.order.length>1 || EXTRAS.length) && !S.draft ? ['trocar-treino','⇄','Outro treino'] : ['evo','📈','Evolução',' data-t="cargas"'],
   ];
   return `<div class="qa" role="group" aria-label="Ações rápidas">${bts.map(([act,ico,txt,extra])=>`<button class="qa-b" data-a="${act}"${extra||''}><span aria-hidden="true">${ico}</span><small>${txt}</small></button>`).join('')}</div>`;
 }
@@ -1598,6 +1607,7 @@ async function notifSheet(){
     ${ck('nt-avisos', NOTIF.avisos!==false, 'Avisos do app (academia fechada, mudanças…)')}
     ${ck('nt-sono', NOTIF.sono!==false, 'Sono: hora de deitar e lembrete de registrar de manhã')}
     ${ck('nt-fotos', NOTIF.fotos!==false, 'Fotos do mês: lembrete no dia 1')}
+    ${ck('nt-treino', NOTIF.treino!==false, 'Treino esquecido aberto (depois de 40 min parado)')}
     ${ck('nt-lem', !!LEM_HORA && NOTIF.lembrete!==false, 'Lembrete nos dias de treino')}
     <label class="lbl-in nt-hora"><span>Horário do lembrete</span><input class="inp" id="nt-hora" type="time" value="${esc(LEM_HORA || LS.get('mt.lembrete', {h:'18:00'}).h || '18:00')}"></label>
     <p class="note">O lembrete chega só nos dias que têm treino na ficha, e não chega se você já treinou. Vale para todos os seus aparelhos.</p>
@@ -1637,7 +1647,7 @@ async function salvarNotif(){
   const v = id => { const el = $('#'+id); return el ? el.checked : true; };
   const hora = ($('#nt-hora') && $('#nt-hora').value) || '';
   const lem = v('nt-lem');
-  const notif = { grupo: v('nt-grupo'), reacoes: v('nt-reacoes'), lembrete: lem, resumo: v('nt-resumo'), avisos: v('nt-avisos'), sono: v('nt-sono'), fotos: v('nt-fotos') };
+  const notif = { grupo: v('nt-grupo'), reacoes: v('nt-reacoes'), lembrete: lem, resumo: v('nt-resumo'), avisos: v('nt-avisos'), sono: v('nt-sono'), fotos: v('nt-fotos'), treino: v('nt-treino') };
   try{
     await D.salvarPrefsNotif(UID, notif, lem ? hora : null);
     NOTIF = notif; LEM_HORA = lem ? hora : '';
@@ -2386,13 +2396,18 @@ function vTreinos(){
     <ol class="sched-list">${rows}</ol>
     <p class="note">Se precisar trocar de treino num dia, o que ficou para trás é sugerido no próximo.${semanasDaFicha()!=null?` Ficha em uso há <b>${semanasDaFicha()} ${semanasDaFicha()===1?'semana':'semanas'}</b>.`:''}</p></section>
     <div class="wlist">${cards}</div>
-    <div class="btns two" style="margin-top:14px"><button class="btn sm ghost" data-a="fichas">Trocar de ficha</button><button class="btn sm ghost" data-a="go" data-v="onboarding">+ Nova ficha</button></div>
+    ${EXTRAS.map(F=>`<section class="card" style="margin-top:14px"><div class="card-h"><h2 class="h2">📋 ${esc(F.nome)}</h2><small class="ag-leg">use no dia que quiser</small></div>
+      <div class="wlist">${F.order.map(L=>{ const W = F.W[L], x = execucoes(L, F), naSemana = x.ultima && x.ultima >= startOfWeek(Date.now());
+        return `<button class="wcard${naSemana?' feito':''}" data-a="go" data-v="treino:${esc(L)}@${esc(F.id)}"><span class="wl neon" aria-hidden="true">${esc(L)}</span>
+          <span><b>${esc(W.name)}</b><small>${esc(W.focus||'')}</small><small>${W.ex.length} exercícios · ${W.total} séries</small><small class="exec">${linhaExecucoes(L, F)}</small>${naSemana?`<span class="chip ok wk">✓ Feito nesta semana</span>`:''}</span>
+          <span class="chev" aria-hidden="true">${naSemana?`<span class="ck big">${ICON.check}</span>`:'›'}</span></button>`; }).join('')}</div></section>`).join('')}
+    <div class="btns two" style="margin-top:14px"><button class="btn sm ghost" data-a="fichas">Fichas</button><button class="btn sm ghost" data-a="go" data-v="onboarding">+ Nova ficha</button></div>
     ${CATALOGO.length?`<button class="gcta" data-a="biblioteca" style="margin-top:12px"><span class="ci">${ICON.play}</span><span><b>Biblioteca de exercícios</b><small>${CATALOGO.length} vídeos de execução para consultar</small></span><span class="chev" aria-hidden="true">›</span></button>`:''}`;
 }
-function vTreino(L){
-  const W = FICHA && FICHA.W[L]; if(!W) return vTreinos();
+function vTreino(L, planId){
+  const F = fichaPorId(planId); const W = F && F.W[L]; if(!W) return vTreinos();
   const ex = W.ex.map((e,i)=>{
-    const sug = suggest(e, 0, L, FICHA.id);
+    const sug = suggest(e, 0, L, F.id);
     return `<article class="ex"><div class="ex-h"><span class="ex-num">${pad(i+1)}</span><div>
       <h3>${esc(e.n)}</h3><div class="chips"><span class="chip">${e.s} × ${range(e.r)}</span><span class="chip">Descanso ${restTxt(e.rest)}</span>${chipsTecnica(e)}</div></div></div>
       ${e.tip?`<p class="tip"><b>Dica:</b> ${esc(e.tip)}</p>`:''}${videoLink(e)}
@@ -2402,8 +2417,8 @@ function vTreino(L){
   return `<button class="back" data-a="go" data-v="treinos">${ICON.back} Treinos</button>
     <div class="whead"><span class="big-letter neon" aria-hidden="true">${L}</span>
       <div><div class="hero-name">${esc(W.name)}</div><div class="hero-focus">${esc(W.focus)}</div>
-      ${W.rest?`<div class="meta">Descanso geral ${esc(W.rest)}</div>`:''}<div class="meta exec">${linhaExecucoes(L)}</div></div></div>
-    <div class="btns" style="margin-top:14px"><button class="btn primary" data-a="start" data-l="${L}">${S.draft&&S.draft.letter===L?'Continuar':'Começar'} treino ${L}</button></div>
+      ${F.extra?`<div class="meta">📋 ${esc(F.nome)}</div>`:''}${W.rest?`<div class="meta">Descanso geral ${esc(W.rest)}</div>`:''}<div class="meta exec">${linhaExecucoes(L, F)}</div></div></div>
+    <div class="btns" style="margin-top:14px"><button class="btn primary" data-a="start" data-l="${L}" data-p="${esc(F.id)}">${S.draft&&S.draft.letter===L&&S.draft.planId===F.id?'Continuar':'Começar'} treino ${L}</button></div>
     ${blocoAquecimento(W)}
     <div class="exlist">${ex}</div>`;
 }
@@ -2415,7 +2430,7 @@ function vSessao(){
   return `<div class="shead"><div class="shead-row">
       <button class="iconbtn" data-a="go" data-v="hoje" aria-label="Voltar para o início (o treino continua)">${ICON.back}</button>
       <span class="sl neon" aria-hidden="true">${esc(d.letter)}</span>
-      <div class="st"><b>${esc(d.w.name)}</b><small><span id="elapsed">0:00</span> · <span id="prog-txt"></span></small></div>
+      <div class="st"><b>${rotuloFicha(d.planId)?esc(rotuloFicha(d.planId))+' · ':''}${esc(d.w.name)}</b><small><span id="elapsed">0:00</span> · <span id="prog-txt"></span></small></div>
       <button class="iconbtn${S.sound?'':' off'}" data-a="sound" aria-label="${S.sound?'Desligar':'Ligar'} som do descanso">${S.sound?ICON.sound:ICON.mute}</button>
     </div><div class="prog"><i id="prog-bar"></i></div></div>
     <div id="vivo-bar">${vivoBarra()}</div>
@@ -3041,15 +3056,17 @@ async function pedirTelaAcesa(){
   if(S.view!=='sessao') soltarTela();
 }
 function soltarTela(){ if(wakeLock){ const w = wakeLock; wakeLock = null; w.release().catch(()=>{}); } }
-function startWorkout(L){
-  if(S.draft && (S.draft.letter!==L || S.draft.planId!==FICHA.id)){
+function startWorkout(L, planId){
+  const F = fichaPorId(planId) || FICHA;
+  if(!F.W[L]) return;
+  if(S.draft && (S.draft.letter!==L || S.draft.planId!==F.id)){
     openSheet(`<h2>Já existe um treino em andamento</h2><p>O Treino ${esc(S.draft.letter)} ainda não foi finalizado. O que você quer fazer?</p>
       <div class="btns"><button class="btn primary" data-a="go-close" data-v="sessao">Continuar o Treino ${esc(S.draft.letter)}</button>
-      <button class="btn danger" data-a="force-start" data-l="${L}">Descartar o ${esc(S.draft.letter)} e começar o ${L}</button>
+      <button class="btn danger" data-a="force-start" data-l="${L}" data-p="${esc(F.id)}">Descartar o ${esc(S.draft.letter)} e começar o ${L}</button>
       <button class="btn ghost" data-a="close">Cancelar</button></div>`);
     return;
   }
-  if(!S.draft){ S.draft = newDraft(L); touchDraft(); }
+  if(!S.draft){ S.draft = newDraft(L, F); touchDraft(); }
   unlockAudio(); pedirTelaAcesa();
   go('sessao');
 }
@@ -3516,11 +3533,12 @@ function perfilSheet(){
       <button class="btn ghost" data-a="close">Fechar</button></div>`);
 }
 function fichasSheet(){
-  const rows = FICHAS.slice().reverse().map(f=>`<div class="frow-f${f.id===FICHA.id?' on':''}">
-      <span><b>${esc(f.nome)}</b><small>${(f.order||[]).length} treinos${f.id===FICHA.id?' · em uso':''}</small></span>
-      ${f.id===FICHA.id ? '<span class="chip ok">Em uso</span>' : `<span class="ff-b"><button class="btn sm" data-a="f-usar" data-id="${esc(f.id)}">Usar</button><button class="mini del" data-a="f-apagar" data-id="${esc(f.id)}" aria-label="Apagar ficha ${esc(f.nome)}">×</button></span>`}
+  const junto = f => EXTRAS.some(x=>x.id===f.id);
+  const rows = FICHAS.slice().reverse().map(f=>`<div class="frow-f${f.id===FICHA.id||junto(f)?' on':''}">
+      <span><b>${esc(f.nome)}</b><small>${(f.order||[]).length} treinos${f.id===FICHA.id?' · principal (segue o cronograma)':junto(f)?' · usada junto, você escolhe no dia':''}</small></span>
+      ${f.id===FICHA.id ? '<span class="chip ok">Principal</span>' : junto(f) ? `<span class="ff-b"><button class="btn sm ghost" data-a="f-junto" data-id="${esc(f.id)}" data-v="0">Tirar</button><button class="btn sm" data-a="f-usar" data-id="${esc(f.id)}">Principal</button></span>` : `<span class="ff-b"><button class="btn sm ghost" data-a="f-junto" data-id="${esc(f.id)}" data-v="1">Usar junto</button><button class="btn sm" data-a="f-usar" data-id="${esc(f.id)}">Principal</button><button class="mini del" data-a="f-apagar" data-id="${esc(f.id)}" aria-label="Apagar ficha ${esc(f.nome)}">×</button></span>`}
     </div>`).join('');
-  openSheet(`<h2>Suas fichas</h2><p>O histórico de treinos continua guardado quando você troca de ficha.</p>
+  openSheet(`<h2>Suas fichas</h2><p><b>Principal</b> é a ficha que segue o cronograma da semana. <b>Usar junto</b> deixa outra ficha (por exemplo, a de outro personal) disponível para você escolher no dia. O histórico continua guardado quando você troca.</p>
     <div class="flist">${rows}</div>
     <div class="btns" style="margin-top:14px"><button class="btn" data-a="go-close" data-v="onboarding">+ Nova ficha</button><button class="btn ghost" data-a="close">Fechar</button></div>`);
 }
@@ -3683,8 +3701,8 @@ document.addEventListener('click', async e=>{
     case 'musculo': musculoSheet(t.dataset.m); break;
     case 'share-evo': abrirCompartilhar('evolucao', null, 'Sua evolução'); break;
     case 'evo': S.evoTab = t.dataset.t; if(S.view!=='evolucao') go('evolucao'); else render(); break;
-    case 'start': if(!S.draft && !$('#sheet').hidden) closeSheet(true); startWorkout(t.dataset.l); break;
-    case 'force-start': S.draft=null; LS.set(kDraft(), null); stopRest(); closeSheet(true); startWorkout(t.dataset.l); break;
+    case 'start': if(!S.draft && !$('#sheet').hidden) closeSheet(true); startWorkout(t.dataset.l, t.dataset.p); break;
+    case 'force-start': S.draft=null; LS.set(kDraft(), null); stopRest(); closeSheet(true); startWorkout(t.dataset.l, t.dataset.p); break;
     case 'check': toggleSet(+t.dataset.ei, +t.dataset.si); break;
     case 'addset': addSet(+t.dataset.ei); break;
     case 'voz': falarSerie(+t.dataset.ei, t); break;
@@ -3702,6 +3720,7 @@ document.addEventListener('click', async e=>{
     case 'sono-q': { const v = +t.dataset.v; S.sonoQ = S.sonoQ===v ? null : v; document.querySelectorAll('[data-a="sono-q"]').forEach(b=>{ const on = +b.dataset.v===S.sonoQ; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); break; }
     case 'sono-save': salvarSonoSheet(); break;
     case 'sono-dormir': vouDormir(); break;
+    case 'esq-finalizar': closeSheet(true); go('sessao'); setTimeout(finishPrompt, 150); break;
     case 'peso-rapido': pesoRapidoSheet(); break;
     case 'peso-rapido-ok': if(await saveBody()) closeSheet(true); break;
     case 'grupo-abrir': go('familia'); break;
@@ -3856,8 +3875,12 @@ document.addEventListener('click', async e=>{
       break; }
     case 'p-foto': { const f=$('#f-avatar'); f.value=''; f.click(); break; }
     case 'fichas': if(FICHA) fichasSheet(); break;
+    case 'f-junto': { const id = t.dataset.id, usar = t.dataset.v==='1';
+      if(!usar && S.draft && S.draft.planId===id){ toast('Finalize ou descarte o treino desta ficha antes de tirar ela.', true); break; }
+      try{ await D.fichaExtra(id, usar); FICHAS = FICHAS.map(f=>f.id===id ? Object.assign({}, f, {ativa:usar, extra:usar}) : f); definirFicha(); guardarCache(); fichasSheet(); render(); toast(usar ? 'Pronto: os treinos dessa ficha aparecem em Treinos e em "Outro treino".' : 'Ficha tirada. Os treinos feitos com ela continuam no histórico.'); }
+      catch(err){ toast('Não consegui mudar agora. Confira a internet.', true); } break; }
     case 'f-usar': { const id = t.dataset.id; if(S.draft){ toast('Finalize ou descarte o treino em andamento antes de trocar de ficha.', true); break; }
-      try{ await D.ativarFicha(UID, id); FICHAS = FICHAS.map(f=>Object.assign({}, f, {ativa:f.id===id})); definirFicha(); closeSheet(true); go('treinos'); toast('Agora você está usando "'+FICHA.nome+'".'); }catch(err){ toast('Não consegui trocar agora.', true); } break; }
+      try{ await D.ativarFicha(UID, id); FICHAS = FICHAS.map(f=>f.id===id ? Object.assign({}, f, {ativa:true, extra:false}) : f.extra ? f : Object.assign({}, f, {ativa:false})); definirFicha(); closeSheet(true); go('treinos'); toast('Agora você está usando "'+FICHA.nome+'".'); }catch(err){ toast('Não consegui trocar agora.', true); } break; }
     case 'f-apagar': { const id = t.dataset.id;
       if(S.confirmDel!==id){ S.confirmDel=id; t.textContent='Apagar?'; t.classList.add('wide'); break; }
       try{ await D.apagarFicha(id); FICHAS = FICHAS.filter(f=>f.id!==id); definirFicha(); fichasSheet(); toast('Ficha apagada. Os treinos feitos com ela continuam no histórico.'); }catch(err){ toast('Não consegui apagar agora.', true); } break; }
@@ -3925,7 +3948,7 @@ document.addEventListener('submit', e=>{
   else if(e.target.id==='f-nova') salvarNovaSenha();
 });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('#sheet').hidden) closeSheet(); });
-document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ guardarCache(); return; } if(!document.hidden){ tickRest(); tickClock(); if(S.draft && S.view==='sessao') pedirTelaAcesa(); atualizarVivo(); conferirAberta(); } });
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ guardarCache(); return; } if(!document.hidden){ tickRest(); tickClock(); if(S.draft && S.view==='sessao') pedirTelaAcesa(); atualizarVivo(); conferirAberta(); setTimeout(avisoTreinoEsquecido, 400); } });
 window.addEventListener('online', ()=>{ if(!UID) return; if(S.offline) carregar(true); else { enviarPendentes(); carregarGrupo(); } });
 window.addEventListener('offline', ()=>{ if(UID){ S.sync = 'offline'; renderStatus(); } });
 
@@ -3990,6 +4013,7 @@ function aplicarDados(d, doAparelho, silencioso, doCache, semRedesenhar){
     if(doAparelho){ S.sync = 'offline'; }
     if(semRedesenhar) renderStatus();
     else if(!silencioso || S.view!=='sessao') render(); else renderStatus();
+    setTimeout(avisoTreinoEsquecido, 700);
     if(doCache){ aplicarTemaAtual(); abrirPeloLink(); return; }
     if(doAparelho){ if(!silencioso) toast('Sem internet: usando os dados guardados no aparelho. O treino é salvo quando a conexão voltar.'); }
     else { S.sync = 'ok'; enviarPendentes(); sincronizarAparelho(); salvarAguaDepois(); enviarSonoPendente().catch(()=>{}); if(LS.get('mt.missoes.pend.'+UID, false)) D.salvarMissoes(UID, MISSOES).then(()=>LS.set('mt.missoes.pend.'+UID, false)).catch(()=>{}); }
@@ -4017,6 +4041,19 @@ function abrirPeloLink(){
     if(q.get('sono')==='registrar' && !S.draft) setTimeout(()=>{ if(noiteAberta()) render(); else sonoRegSheet(); }, 400);
   }catch(e){}
 }
+// Treino esquecido aberto: oferece finalizar com a hora do último registro
+const ESQUECIDO_MIN = 40;
+function avisoTreinoEsquecido(){
+  const d = S.draft; if(!d || !d.w || S.esqVisto === d.start || !$('#sheet').hidden) return;
+  const ult = Math.max(d.at||0, d.lastSetAt||0, d.start||0), parado = Date.now() - ult;
+  if(parado < ESQUECIDO_MIN*60000) return;
+  S.esqVisto = d.start;
+  const c = countDone(d), fim = d.lastSetAt ? d.lastSetAt + 60000 : ult;
+  openSheet(`<h2>⏱️ Seu treino ficou aberto</h2>
+    <p>O <b>Treino ${esc(d.letter)}</b>${rotuloFicha(d.planId)?' ('+esc(rotuloFicha(d.planId))+')':''} começou às <b>${horaDe(d.start)}</b> e está parado desde as <b>${horaDe(ult)}</b> (${durTxt(Math.round(parado/60000))}). Você fez ${c.sets} de ${c.total} séries.</p>
+    <p class="note">Ao finalizar, o treino termina às ${horaDe(fim)}, a hora do último registro, para o tempo não ficar errado.</p>
+    <div class="btns"><button class="btn primary" data-a="esq-finalizar">Finalizar o treino</button><button class="btn ghost" data-a="close">Ainda estou treinando</button></div>`);
+}
 // Atalhos do ícone do app (segurar o dedo no ícone)
 function atalho(acao){
   if(!FICHA) return;
@@ -4024,6 +4061,7 @@ function atalho(acao){
   else if(acao==='agua'){ go('hoje'); addAgua(250); toast('+250 ml de água · '+litros(aguaHoje())+' L hoje'); }
   else if(acao==='sono'){ go('hoje'); const a = noiteAberta(); if(a) acordei(); else if(ehNoite()) vouDormir(); else sonoRegSheet(); }
   else if(acao==='peso'){ go('hoje'); pesoRapidoSheet(); }
+  else if(acao==='finalizar'){ if(S.draft){ go('sessao'); setTimeout(finishPrompt, 200); } else toast('Esse treino já foi finalizado.'); }
   else if(acao==='fotos'){ S.evoTab = 'corpo'; go('evolucao'); S.pnew = {d:dayKey(Date.now()), files:{}}; openPhotoSheet(); }
 }
 // Mantém a cópia do aparelho em dia (para abrir sem internet)

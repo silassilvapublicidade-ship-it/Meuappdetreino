@@ -6,13 +6,13 @@ from fake_supabase import Fake
 from test_novos import nova_conta, SH
 def txt(s): return re.sub(r'\s+', ' ', s or '').strip()
 async def main():
-    fake = Fake(); errs = []
+    fake = Fake(); errs = []; fake.inicio = {'completos': ['sono'], 'auto': False}
     async with async_playwright() as p:
         b = await p.chromium.launch(**LANCAR)
         ctx, pg = await nova_conta(b, fake, 'Cintia Guedes', 'c@t.com', errs)
         await pg.click('[data-a=f-save]'); await pg.wait_for_selector('.wcard', timeout=10000)
         await pg.set_viewport_size({'width': 390, 'height': 844})
-        await pg.click('#nav-hoje'); await pg.click('.qa-b[data-a^=sono]'); await pg.wait_for_selector('#sn-dormiu')
+        await pg.click('#nav-hoje'); await pg.click('.sono [data-a=sono-reg] >> nth=0'); await pg.wait_for_selector('#sn-dormiu')
         await pg.fill('#sn-dormiu', '23:00'); await pg.fill('#sn-acordou', '07:00')
         await pg.click('[data-a=sn-vezes][data-v="1"]'); await pg.click('[data-a=sn-min][data-v="60"]'); await pg.wait_for_timeout(100)
         print('total:', txt(await pg.text_content('#sn-tot')), '|', txt(await pg.text_content('#sn-tot-det')))
@@ -23,7 +23,6 @@ async def main():
         await pg.click('#sheet [data-a=close]') if await pg.is_visible('#sheet') else None
         hoje = fake.tables['sono'][0]['dia']
         await pg.evaluate("d=>document.dispatchEvent(new Event('x'))", hoje)
-        await pg.click('.qa-b[data-a=sono]') if await pg.query_selector('.qa-b[data-a=sono]') else await pg.click('[data-mod=sono] .mod-h')
         await pg.wait_for_timeout(300)
         if not await pg.query_selector('#sn-dormiu'):
             await pg.click(f'[data-a=sono-reg][data-d="{hoje}"] >> nth=0'); await pg.wait_for_selector('#sn-dormiu')

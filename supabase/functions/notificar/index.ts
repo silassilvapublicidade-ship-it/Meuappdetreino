@@ -75,7 +75,7 @@ async function enviar(usuarios: string[], msg: Msg) {
   return ok;
 }
 
-async function querem(usuarios: string[], chave: "grupo" | "reacoes" | "lembrete" | "resumo" | "avisos" | "sono" | "fotos") {
+async function querem(usuarios: string[], chave: "grupo" | "reacoes" | "lembrete" | "resumo" | "avisos" | "sono" | "fotos" | "treino") {
   if (!usuarios.length) return [];
   const { data } = await sb.from("profiles").select("id,notif").in("id", usuarios);
   const fora = new Set((data || []).filter((p) => p.notif && p.notif[chave] === false).map((p) => p.id));
@@ -150,7 +150,7 @@ async function lembretes() {
     const [h, m] = String(p.lembrete_hora).split(":").map(Number);
     const alvo = h * 60 + m;
     if (agora.min < alvo || agora.min > alvo + 30) continue; // janela de 30 min
-    const { data: ficha } = await sb.from("plans").select("treinos,cronograma").eq("user_id", p.id).eq("ativa", true).maybeSingle();
+    const { data: ficha } = await sb.from("plans").select("treinos,cronograma").eq("user_id", p.id).eq("ativa", true).eq("extra", false).order("updated_at", { ascending: false }).limit(1).maybeSingle();
     const letra = ficha?.cronograma?.[String(agora.dia)];
     const W = letra && ficha?.treinos?.w?.[letra];
     // marca como visto hoje mesmo sem treino, para não repetir a checagem
@@ -239,6 +239,31 @@ async function fotosMes() {
     const { count: recentes } = await sb.from("photos").select("id", { count: "exact", head: true }).eq("user_id", uid).gte("d", desde);
     if (recentes) continue;
     enviados += await enviar([uid], { title: "Dia das fotos do mês 📸", body: "Frente, lado e costas, com a mesma luz de sempre. Em um mês dá para ver a diferença.", url: "/?acao=fotos", tag: "fotos-mes" });
+  }
+  return enviados;
+}
+
+// Treino esquecido aberto: rascunho parado há mais de 40 min recebe um aviso (uma vez por treino)
+async function treinoAberto() {
+  const limite = new Date(Date.now() - 40 * 60000).toISOString();
+  const { data: rasc } = await sb.from("drafts").select("user_id,data,updated_at").lt("updated_at", limite);
+  if (!rasc || !rasc.length) return 0;
+  const ids = await querem(rasc.map((r) => r.user_id), "treino");
+  const { data: perfis } = await sb.from("profiles").select("id,aviso_treino_aberto").in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+  const visto = Object.fromEntries((perfis || []).map((p) => [p.id, p.aviso_treino_aberto]));
+  const hora = (ms: number) => new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO, hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
+  let enviados = 0;
+  for (const r of rasc) {
+    const d = r.data || {}, ini = Number(d.start) || 0;
+    if (!ids.includes(r.user_id) || !ini || Number(visto[r.user_id]) === ini) continue;
+    await sb.from("profiles").update({ aviso_treino_aberto: ini }).eq("id", r.user_id);
+    const ult = Math.max(Number(d.at) || 0, Number(d.lastSetAt) || 0, ini);
+    enviados += await enviar([r.user_id], {
+      title: "Seu treino ainda está aberto ⏱️",
+      body: `Treino ${d.letter || ""}${d.w?.name ? " · " + d.w.name : ""} começou às ${hora(ini)} e está parado desde as ${hora(ult)}. Toque para finalizar.`,
+      url: "/?acao=finalizar",
+      tag: "treino-aberto",
+    });
   }
   return enviados;
 }
@@ -338,7 +363,7 @@ Deno.serve(async (req) => {
     if (corpo.tipo === "treino" && corpo.id) n = await treinoTerminado(corpo.id);
     else if (corpo.tipo === "reacao" && corpo.id) n = await reacao(corpo.id);
     else if (corpo.tipo === "aviso" && corpo.id) n = await aviso(corpo.id);
-    else if (corpo.tipo === "lembretes") n = (await lembretes()) + (await sonoAvisos()) + (await fotosMes());
+    else if (corpo.tipo === "lembretes") n = (await lembretes()) + (await sonoAvisos()) + (await fotosMes()) + (await treinoAberto());
     else if (corpo.tipo === "resumo" && corpo.previa) { const pv: Msg[] = []; await resumo(pv); return Response.json({ ok: true, previa: pv }); }
     else if (corpo.tipo === "resumo") n = await resumo();
     else return new Response("tipo", { status: 400 });

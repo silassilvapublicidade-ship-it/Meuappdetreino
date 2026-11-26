@@ -30,7 +30,7 @@ function treinoParaLinha(uid, s){
 }
 function linhaParaFicha(r){
   const t = r.treinos || {};
-  return { id: r.id, nome: r.nome, ativa: r.ativa, order: t.order || [], w: t.w || {}, sched: r.cronograma || {}, updated: r.updated_at, criada: r.created_at ? Date.parse(r.created_at) : null };
+  return { id: r.id, nome: r.nome, ativa: r.ativa, extra: !!r.extra, order: t.order || [], w: t.w || {}, sched: r.cronograma || {}, updated: r.updated_at, criada: r.created_at ? Date.parse(r.created_at) : null };
 }
 
 // ---------- Carga inicial ----------
@@ -57,7 +57,7 @@ export async function carregarTudo(uid){
     nome: perfil && perfil.nome || '',
     avatar: perfil && perfil.avatar_path || '',
     instagram: perfil && perfil.instagram || '',
-    notif: Object.assign({ grupo: true, reacoes: true, lembrete: true, resumo: true, avisos: true, sono: true, fotos: true }, perfil && perfil.notif || {}),
+    notif: Object.assign({ grupo: true, reacoes: true, lembrete: true, resumo: true, avisos: true, sono: true, fotos: true, treino: true }, perfil && perfil.notif || {}),
     missoes: perfil && Array.isArray(perfil.missoes) ? perfil.missoes : [],
     tema: perfil && perfil.tema || '',
     aguaMeta: perfil && perfil.agua_meta || null,
@@ -102,12 +102,17 @@ export async function salvarFicha(uid, id, nome, json){
   if(id){
     return linhaParaFicha(ok(await sb.from('plans').update({ nome, treinos: json.treinos, cronograma: json.cronograma }).eq('id', id).select().single()));
   }
-  ok(await sb.from('plans').update({ ativa: false }).eq('user_id', uid).eq('ativa', true));
+  ok(await sb.from('plans').update({ ativa: false }).eq('user_id', uid).eq('ativa', true).eq('extra', false));
   return linhaParaFicha(ok(await sb.from('plans').insert({ user_id: uid, nome, treinos: json.treinos, cronograma: json.cronograma, ativa: true }).select().single()));
 }
+// ficha principal (a do cronograma); as extras continuam ativas
 export async function ativarFicha(uid, id){
-  ok(await sb.from('plans').update({ ativa: false }).eq('user_id', uid).neq('id', id));
-  ok(await sb.from('plans').update({ ativa: true }).eq('id', id));
+  ok(await sb.from('plans').update({ ativa: false }).eq('user_id', uid).neq('id', id).eq('extra', false));
+  ok(await sb.from('plans').update({ ativa: true, extra: false }).eq('id', id));
+}
+// ficha usada junto com a principal (aparece para escolher no dia)
+export async function fichaExtra(id, usar){
+  ok(await sb.from('plans').update(usar ? { ativa: true, extra: true } : { ativa: false, extra: false }).eq('id', id));
 }
 export async function apagarFicha(id){ ok(await sb.from('plans').delete().eq('id', id)); }
 

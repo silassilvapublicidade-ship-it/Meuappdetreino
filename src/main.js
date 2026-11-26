@@ -3615,7 +3615,7 @@ function fichasSheet(){
 }
 
 /* ---------- Compartilhar (imagem da semana ou do mês) ---------- */
-const CARD = { tipo:'semana', ref:null, titulo:'', conquista:null, blob:null, url:null };
+const CARD = { tipo:'semana', ref:null, titulo:'', conquista:null, blob:null, url:null, foto:null, fotoPos:'auto' };
 // ---------- antes e depois ----------
 function valorPerto(dk, k, janela){
   const alvo = new Date(dk+'T12:00').getTime(); let melhor = null;
@@ -3693,6 +3693,8 @@ function dadosMes(ref){
   return { ano, mes, feitos, nDias: feitos.size, tempo: doMes.reduce((n,s)=>n+(s.dur||0),0), treinos: doMes.length, data: Date.now(), nome: NOME || EMAIL.split('@')[0], insta: INSTA };
 }
 async function abrirCompartilhar(tipo, ref, titulo, conquista){
+  if((ref||null)!==CARD.ref){ CARD.foto = null; CARD.fotoPos = 'auto'; }
+  if(tipo==='foto' && !(CARD.foto && ref)) tipo = 'semana';
   CARD.tipo = tipo; CARD.ref = ref || null; CARD.titulo = titulo || ''; CARD.conquista = conquista || null;
   if(CARD.url){ try{ URL.revokeObjectURL(CARD.url); }catch(e){} CARD.url = null; }
   CARD.blob = null;
@@ -3700,12 +3702,19 @@ async function abrirCompartilhar(tipo, ref, titulo, conquista){
   const unico = tipo==='antesdepois' || tipo==='retro';
   const tabs = unico ? '' : `<div class="seg ${['','','two','tres','four'][op.length]}" role="tablist">${op.map(([k,l])=>`<button role="tab" aria-selected="${tipo===k}" data-a="share-tab" data-t="${k}">${l}</button>`).join('')}</div>`;
   const aviso = tipo==='antesdepois' ? '<p class="note" style="margin-top:0">Suas fotos aparecem na imagem. Ela só sai do app se você compartilhar ou baixar.</p>' : '';
+  const pos = CARD.fotoPos;
+  const fotoCtl = !(ref && ref.start) ? '' : tipo==='foto'
+    ? `<div class="seg two" role="tablist" aria-label="Onde fica o texto" id="card-pos" style="margin:12px 0 0"><button role="tab" aria-selected="${pos==='baixo'}" data-a="card-pos" data-v="baixo">Texto embaixo</button><button role="tab" aria-selected="${pos==='cima'}" data-a="card-pos" data-v="cima">Texto em cima</button></div>
+      <p class="note" id="card-foto-info" style="margin:8px 0 0">A foto fica só no seu celular, não é salva no app.</p>
+      <button class="btn ghost" data-a="card-foto" style="margin-top:10px">📷 Trocar foto</button>`
+    : `<button class="btn ghost" data-a="${CARD.foto ? 'share-tab' : 'card-foto'}" data-t="foto" style="margin-top:12px">📷 ${CARD.foto ? 'Ver com a sua foto' : 'Montar com uma foto sua'}</button>`;
   openSheet(`<h2>${esc(titulo || 'Compartilhar')}</h2><p>Imagem pronta para o story ou o WhatsApp.</p>${aviso}${tabs}
-    <div class="cardprev" id="cardprev"><div class="spin" aria-hidden="true"></div></div>
+    <div class="cardprev" id="cardprev"><div class="spin" aria-hidden="true"></div></div>${fotoCtl}<input type="file" accept="image/*" id="f-cardfoto" hidden>
     <div class="btns" style="margin-top:12px"><button class="btn primary" data-a="share-go" id="share-go" disabled>${ICON.share} Compartilhar</button>
     <a class="btn ghost" id="share-dl" download="treino.png" aria-disabled="true">Baixar imagem</a>
     <button class="btn ghost" data-a="close">Fechar</button></div>`);
   try{
+    if(tipo==='foto'){ await cartaoComFoto(ref); return; }
     const foto = await fotoParaCartao();
     const { desenharSemana, desenharMes, desenharConquista, desenharAntesDepois, desenharRetrospectiva, desenharEvolucao } = await cartao();
     const canvas = tipo==='antesdepois' ? await desenharAntesDepois(Object.assign(await dadosAntesDepois(), {foto}))
@@ -3713,13 +3722,51 @@ async function abrirCompartilhar(tipo, ref, titulo, conquista){
       : tipo==='conquista' && CARD.conquista ? await desenharConquista(Object.assign(dadosConquista(CARD.conquista), {foto}))
       : tipo==='evolucao' ? await desenharEvolucao(Object.assign(dadosEvolucao(), {foto}))
       : tipo==='mes' ? await desenharMes(Object.assign(dadosMes(ref), {foto})) : await desenharSemana(Object.assign(dadosSemana(ref), {foto, conquista: ref && CARD.conquista ? CARD.conquista.nome : null}));
-    const blob = await new Promise(r=>canvas.toBlob(r, 'image/png'));
-    if(CARD.tipo!==tipo || CARD.ref!==(ref||null)) return;
-    CARD.blob = blob; CARD.url = URL.createObjectURL(blob);
-    const prev = $('#cardprev'); if(prev) prev.innerHTML = `<img src="${CARD.url}" alt="Imagem para compartilhar">`;
-    const dl = $('#share-dl'); if(dl){ dl.href = CARD.url; dl.download = 'meus-treinos-'+tipo+'.png'; dl.removeAttribute('aria-disabled'); }
-    const go = $('#share-go'); if(go) go.disabled = false;
+    await mostrarCard(canvas, tipo, ref, 'image/png');
   }catch(e){ const prev = $('#cardprev'); if(prev) prev.innerHTML = '<p class="note">Não consegui gerar a imagem agora.</p>'; }
+}
+async function mostrarCard(canvas, tipo, ref, tipoImg){
+  const blob = await new Promise(r=>canvas.toBlob(r, tipoImg, 0.9));
+  if(CARD.tipo!==tipo || CARD.ref!==(ref||null)) return false;
+  if(CARD.url){ try{ URL.revokeObjectURL(CARD.url); }catch(e){} }
+  CARD.blob = blob; CARD.url = URL.createObjectURL(blob);
+  const ext = tipoImg==='image/jpeg' ? '.jpg' : '.png';
+  const prev = $('#cardprev'); if(prev) prev.innerHTML = `<img src="${CARD.url}" alt="Imagem para compartilhar">`;
+  const dl = $('#share-dl'); if(dl){ dl.href = CARD.url; dl.download = 'meus-treinos-'+tipo+ext; dl.removeAttribute('aria-disabled'); }
+  const go = $('#share-go'); if(go) go.disabled = false;
+  return true;
+}
+// cartão do treino montado em cima de uma foto da pessoa, sem cobrir o rosto
+async function cartaoComFoto(ref){
+  const F = CARD.foto;
+  if(!F.rostos){
+    const prev = $('#cardprev'); if(prev) prev.innerHTML = '<div style="text-align:center;padding:20px"><div class="spin" aria-hidden="true" style="margin:0 auto"></div><p class="note">Procurando o seu rosto para o texto não cobrir…</p></div>';
+    try{
+      const { acharRostos } = await import('./rosto.js');
+      F.rostos = await Promise.race([acharRostos(F.img), new Promise((_,r)=>setTimeout(()=>r(new Error('tempo')), 15000))]);
+    }catch(e){ F.rostos = []; }
+    if(CARD.foto!==F || CARD.tipo!=='foto') return;
+  }
+  const { desenharFotoTreino } = await cartao();
+  const r = await desenharFotoTreino({ ref, foto:F.img, rostos:F.rostos, pos:CARD.fotoPos, data:ref.start, insta:INSTA });
+  if(CARD.foto!==F) return;
+  if(!await mostrarCard(r.canvas, 'foto', ref, 'image/jpeg')) return;
+  document.querySelectorAll('#card-pos [data-a="card-pos"]').forEach(b=>b.setAttribute('aria-selected', b.dataset.v===r.pos));
+  const info = $('#card-foto-info');
+  if(info) info.textContent = (r.rostos ? (r.compacto ? 'Achei seu rosto e deixei o texto menor para não cobrir.' : 'Achei seu rosto: o texto ficou longe dele.') : 'Não achei o rosto na foto. Se o texto cobrir, mude a posição.') + ' A foto fica só no seu celular.';
+}
+async function carregarFotoCard(file){
+  if(!file || !CARD.ref) return;
+  const url = URL.createObjectURL(file);
+  try{
+    const img = await new Promise((res, rej)=>{ const i = new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url; });
+    const w = img.naturalWidth, h = img.naturalHeight, s = Math.min(1, 2400/Math.max(w, h));
+    const c = document.createElement('canvas'); c.width = Math.round(w*s); c.height = Math.round(h*s);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    CARD.foto = { img:c, rostos:null }; CARD.fotoPos = 'auto';
+    abrirCompartilhar('foto', CARD.ref, CARD.titulo, CARD.conquista);
+  }catch(e){ toast('Não consegui abrir essa foto. Tente outra.', true); }
+  finally{ URL.revokeObjectURL(url); }
 }
 async function fotoParaCartao(){
   if(!AVATAR) return null;
@@ -3748,7 +3795,8 @@ async function recortarQuadrado(blob, lado){
 }
 async function enviarCard(){
   if(!CARD.blob) return;
-  const file = new File([CARD.blob], 'meus-treinos-'+CARD.tipo+'.png', {type:'image/png'});
+  const jpg = CARD.blob.type==='image/jpeg';
+  const file = new File([CARD.blob], 'meus-treinos-'+CARD.tipo+(jpg?'.jpg':'.png'), {type: jpg ? 'image/jpeg' : 'image/png'});
   try{
     if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file]}); return; }
   }catch(e){ if(e && e.name==='AbortError') return; }
@@ -3940,6 +3988,8 @@ document.addEventListener('click', async e=>{
       abrirCompartilhar(t.dataset.t, ss, null, cq || null); break; }
     case 'share-tab': abrirCompartilhar(t.dataset.t, CARD.ref, CARD.titulo, CARD.conquista); break;
     case 'share-go': enviarCard(); break;
+    case 'card-foto': { const f = $('#f-cardfoto'); if(f){ f.value = ''; f.click(); } break; }
+    case 'card-pos': CARD.fotoPos = t.dataset.v; abrirCompartilhar('foto', CARD.ref, CARD.titulo, CARD.conquista); break;
     case 'share-cq': { const c = minhasConquistas().find(x=>x.id===t.dataset.id); if(c && c.at) abrirCompartilhar('conquista', null, c.ico+' '+c.nome, c); break; }
     case 'share-ad': abrirCompartilhar('antesdepois', null, 'Antes e depois'); break;
     case 'share-retro': CARD.ano = anoRetro(); abrirCompartilhar('retro', null, 'Retrospectiva '+CARD.ano); break;
@@ -4010,6 +4060,7 @@ document.addEventListener('change', e=>{
   if(el.tagName==='SELECT' && el.dataset.e && S.edit){ setPath(S.edit, el.dataset.e, el.value); return; }
   if(el.dataset.iniOn){ const k = el.dataset.iniOn; INICIO.ocultos = INICIO.ocultos.filter(x=>x!==k); if(!el.checked) INICIO.ocultos.push(k); salvarInicio(true); return; }
   if(id==='ini-auto'){ INICIO.auto = el.checked; salvarInicio(true); return; }
+  if(id==='f-cardfoto'){ carregarFotoCard(el.files && el.files[0]); return; }
   if(id==='exsel'){ S.exSel = el.value; render(); }
   else if(id==='msel'){ S.mSel = el.value; render(); }
   else if(id==='cmp-a'){ S.cmp.a = el.value; render(); }

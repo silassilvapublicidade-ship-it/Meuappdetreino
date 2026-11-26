@@ -488,3 +488,84 @@ export async function desenharEvolucao(d){
   perfil(x, d, 1592);
   return c;
 }
+
+/* ---------- treino com foto da pessoa ---------- */
+// A foto cobre o story inteiro e o texto vai para cima ou para baixo, onde não houver rosto.
+function textosTreino(s){
+  const cardio = s.letter==='CARDIO', cd = cardio ? ((s.ex||[])[0]||{}).cardio || {} : null;
+  const aula = cardio && (cd.aula || ['Spinning','Jump','Pump'].includes(s.wname));
+  const rot = aula ? 'AULA CONCLUÍDA' : cardio ? 'CARDIO CONCLUÍDO' : 'TREINO CONCLUÍDO';
+  const titulo = aula ? String(s.wname).toUpperCase() : cardio ? 'CARDIO' : 'TREINO '+String(s.letter||'');
+  const sub = aula ? (cd.intens ? 'INTENSIDADE '+String(cd.intens).toUpperCase() : 'AULA') : String(s.wname||'').toUpperCase().slice(0,26);
+  const n = (s.ex||[]).length;
+  const itens = aula ? [[tempoTxt(s.dur), 'TEMPO'], [cd.kcal ? (cd.kcalEst?'~':'')+Math.round(cd.kcal)+' kcal' : '—', 'CALORIAS'], [cd.intens ? String(cd.intens).toUpperCase() : '—', 'INTENSIDADE']]
+    : cardio ? [[tempoTxt(s.dur), 'TEMPO'], [cd.km ? String(cd.km).replace('.',',')+' km' : '—', 'DISTÂNCIA'], [cd.kcal ? Math.round(cd.kcal)+' kcal' : '—', 'CALORIAS']]
+    : [[tempoTxt(s.dur), 'TEMPO'], [s.done+'/'+s.total, 'SÉRIES'], [String(n), n===1?'EXERCÍCIO':'EXERCÍCIOS']];
+  return { rot, titulo, sub: sub===titulo ? '' : sub, itens };
+}
+function caber(x, txt, larg, tam, peso, fam){
+  let fs = tam; x.font = `${peso} ${fs}px ${fam}`;
+  while(x.measureText(txt).width > larg && fs > tam*0.45){ fs -= 4; x.font = `${peso} ${fs}px ${fam}`; }
+}
+const TOPO = 230, BASE = 1680, ALT = { cheio: 640, compacto: 290 };
+export async function desenharFotoTreino(d){
+  await fontes();
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = COR.bg; x.fillRect(0,0,W,H);
+  const img = d.foto, iw = img.width, ih = img.height;
+  const sc = Math.max(W/iw, H/ih), vw = W/sc, vh = H/sc;
+  const R = (d.rostos||[]).filter(r=>r.w>0.02);
+  const u = R.length ? R.reduce((a,r)=>({ x0:Math.min(a.x0,r.x), y0:Math.min(a.y0,r.y), x1:Math.max(a.x1,r.x+r.w), y1:Math.max(a.y1,r.y+r.h) }), {x0:1,y0:1,x1:0,y1:0}) : null;
+  const lim = (v, a, b)=>Math.max(a, Math.min(b, v));
+  const sx = lim((u ? (u.x0+u.x1)/2 : 0.5)*iw - vw/2, 0, iw-vw);
+  const sy = u ? lim(((u.y0+u.y1)/2)*ih - vh*0.32, 0, ih-vh) : (ih-vh)/2;
+  x.drawImage(img, sx, sy, vw, vh, 0, 0, W, H);
+  // rostos na tela, com folga para cabelo e queixo
+  const faces = R.map(r=>{ const fx = (r.x*iw - sx)*sc, fy = (r.y*ih - sy)*sc, fw = r.w*iw*sc, fh = r.h*ih*sc;
+    return { x0:fx - fw*0.15, x1:fx + fw*1.15, y0:fy - fh*0.35, y1:fy + fh*1.15 }; }).filter(f=>f.y1>0 && f.y0<H && f.x1>0 && f.x0<W);
+  const area = (pos, tam)=>{ const h = ALT[tam]; return pos==='cima' ? { t:TOPO, b:TOPO+h } : { t:BASE-h, b:BASE }; };
+  const cobre = a=>faces.reduce((n,f)=>n + Math.max(0, Math.min(a.b+40, f.y1) - Math.max(a.t-40, f.y0)), 0);
+  const ordem = d.pos==='cima' ? ['cima'] : d.pos==='baixo' ? ['baixo'] : ['baixo','cima'];
+  let esc = null;
+  for(const tam of ['cheio','compacto']) for(const pos of ordem){ if(!esc && cobre(area(pos, tam))===0) esc = { pos, tam }; }
+  if(!esc){ const op = ordem.map(pos=>({ pos, tam:'compacto' })); op.sort((a,b)=>cobre(area(a.pos,a.tam)) - cobre(area(b.pos,b.tam))); esc = op[0]; }
+  const a = area(esc.pos, esc.tam);
+  // escurece só a faixa do texto, sem passar por cima do rosto
+  const fundo = 'rgba(4,8,11,', lv = 300;
+  if(esc.pos==='baixo'){
+    const acima = faces.filter(f=>f.y1 <= a.t).reduce((m,f)=>Math.max(m, f.y1), 0);
+    const g0 = Math.max(a.t - lv, acima), g = x.createLinearGradient(0, g0, 0, H);
+    g.addColorStop(0, fundo+'0)'); g.addColorStop(Math.min(.9, (a.t+60-g0)/(H-g0)), fundo+'.8)'); g.addColorStop(1, fundo+'.92)');
+    x.fillStyle = g; x.fillRect(0, g0, W, H-g0);
+  } else {
+    const abaixo = faces.filter(f=>f.y0 >= a.b).reduce((m,f)=>Math.min(m, f.y0), H);
+    const g1 = Math.min(a.b + lv, abaixo), g = x.createLinearGradient(0, 0, 0, g1);
+    g.addColorStop(0, fundo+'.92)'); g.addColorStop(Math.max(.1, (a.b-60)/g1), fundo+'.8)'); g.addColorStop(1, fundo+'0)');
+    x.fillStyle = g; x.fillRect(0, 0, W, g1);
+  }
+  const T = textosTreino(d.ref), t = a.t;
+  x.save(); x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = 14; x.textBaseline = 'alphabetic';
+  // marca e data
+  x.textAlign = 'left'; x.font = `400 54px ${DISPLAY}`;
+  x.strokeStyle = COR.cyan; x.lineWidth = 2; x.strokeText('MEUS', 80, t+50);
+  const wm = x.measureText('MEUS ').width; x.fillStyle = COR.mint; x.fillText('TREINOS', 80+wm, t+50);
+  const insta = d.insta ? '@'+d.insta : '';
+  x.textAlign = 'right'; x.font = `700 30px ${BODY}`; x.fillStyle = 'rgba(242,248,249,.85)';
+  x.fillText(esc.tam==='compacto' && insta ? insta+'  ·  '+dataBR(d.data) : dataBR(d.data), W-80, t+46);
+  if(esc.tam==='cheio'){
+    x.save(); x.shadowBlur = 0; rotulo(x, T.rot, t+122); x.restore();
+    if(insta){ x.textAlign = 'right'; x.font = `700 30px ${BODY}`; x.fillStyle = COR.cyan; x.fillText(insta, W-80, t+122); }
+    x.textAlign = 'left'; caber(x, T.titulo, W-160, 200, 400, DISPLAY); x.fillStyle = COR.ink; x.fillText(T.titulo, 74, t+320);
+    if(T.sub){ caber(x, T.sub, W-160, 100, 400, DISPLAY); x.fillStyle = gradTxt(x, t+330, t+410); x.fillText(T.sub, 78, t+408); }
+    x.restore();
+    stats(x, T.itens, t+440);
+  } else {
+    const linha = T.titulo + (T.sub ? ' · '+T.sub : '');
+    x.textAlign = 'left'; caber(x, linha, W-160, 120, 400, DISPLAY); x.fillStyle = COR.ink; x.fillText(linha, 76, t+175);
+    const info = T.itens.filter(([v])=>v && v!=='—').map(([v,l])=>l==='INTENSIDADE' ? 'intensidade '+v.toLowerCase() : ['TEMPO','CALORIAS','DISTÂNCIA'].includes(l) ? v : v+' '+l.toLowerCase()).join('  ·  ');
+    caber(x, info, W-160, 36, 800, BODY); x.fillStyle = COR.mint; x.fillText(info, 80, t+240);
+    x.restore();
+  }
+  return { canvas: c, pos: esc.pos, compacto: esc.tam==='compacto', rostos: faces.length };
+}

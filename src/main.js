@@ -2642,7 +2642,7 @@ function evoResumo(){
     <p class="note" style="margin-top:6px">Linha tracejada: meta de ${meta} treinos. Semanas começam na segunda.</p></section>`;
 
   return `<div class="rtg">${tiles}</div>
-    <button class="btn" data-a="share-evo" style="margin:4px 0 14px">${ICON.share} Compartilhar minha evolução</button>
+    <div class="btns two" style="margin:4px 0 14px"><button class="btn" data-a="share-evo">${ICON.share} Compartilhar</button><button class="btn" data-a="relatorio">📄 Relatório do mês</button></div>
     ${prev}${cruz}${cmp}${freq}
     <button class="link" data-a="evo" data-t="conquistas" style="display:block;margin:14px auto">🏅 Ver conquistas e nível ›</button>`;
 }
@@ -2762,6 +2762,106 @@ function musculoSheet(m){
     ${exs.length ? `<div class="exl">${exs.map(([k,s])=>{ const x = ev[k]; return `<button class="exr" data-a="ex-ver" data-k="${esc(k)}"><span class="exr-n"><b>${esc(NAMES[k]||k)}</b><small>${fmtN(s,0)} ${s===1?'série':'séries'}</small></span>${x?sparkline(x.spark):''}<span class="exr-d ${x&&x.dif>0?'up':''}">${x&&x.pct!=null?(x.dif>0?'+':'')+fmtN(x.dif)+(x.usaKg?' kg':''):''}</span></button>`; }).join('')}</div>` : ''}
     ${daFicha.length ? `<p class="note">Na sua ficha também: ${daFicha.map(x=>`${esc(NAMES[x.k]||x.k)} (Treino ${x.L})`).join(', ')}.</p>` : ''}
     <div class="btns" style="margin-top:12px"><button class="btn ghost" data-a="close">Fechar</button></div>`);
+}
+
+/* ----- Relatório do mês em PDF ----- */
+function dadosRelatorio(ano, mes){
+  const ini = new Date(ano, mes, 1).getTime(), fimMes = new Date(ano, mes+1, 1).getTime() - 1, fim = Math.min(fimMes, Date.now());
+  const aIni = new Date(ano, mes-1, 1).getTime(), aFim = ini - 1;
+  const doMes = S.sessions.filter(s=>s.start>=ini && s.start<=fim), forca = doMes.filter(s=>!ehCardio(s));
+  const antF = S.sessions.filter(s=>s.start>=aIni && s.start<=aFim && !ehCardio(s));
+  const tempoS = doMes.reduce((n,s)=>n+(s.dur||0),0);
+  // semanas (segunda a domingo) que tocam o mês
+  const semanas = []; for(let w = startOfWeek(ini); w <= fim; w += 7*864e5){ const a = Math.max(w, ini), b = Math.min(w + 7*864e5 - 1, fim); semanas.push({ lbl: new Date(a).getDate()===new Date(b).getDate() ? pad(new Date(a).getDate()) : pad(new Date(a).getDate())+'–'+pad(new Date(b).getDate()), n: forca.filter(s=>s.start>=w && s.start<w+7*864e5).length }); }
+  const metaSemana = FICHA ? SEMANA.filter(dd=>FICHA.W[FICHA.sched[dd]]).length : 0;
+  const nomeTreino = s => { const r = rotuloFicha(s.planId); return `${s.letter} · ${s.wname||''}${r?' ('+r+')':''}`; };
+  const porT = {}; forca.forEach(s=>{ const k = nomeTreino(s); if(!porT[k]) porT[k] = { nome:k, n:0, ultima:s.start }; porT[k].n++; porT[k].ultima = Math.max(porT[k].ultima, s.start); });
+  // cargas: maior carga no primeiro e no último treino do mês de cada exercício
+  const SER = seriesEvo(), NAMES = nomeDeChave();
+  const cargas = Object.entries(SER).map(([k,a])=>{
+    const noMes = a.filter(p=>p.t>=ini && p.t<=fim); if(!noMes.length) return null;
+    const comKg = noMes.filter(p=>p.kg>0), antes = a.filter(p=>p.t<ini && p.kg>0);
+    const iniKg = antes.length ? antes[antes.length-1].kg : comKg.length ? comKg[0].kg : null, fimKg = comKg.length ? comKg[comKg.length-1].kg : null;
+    const bateu = comKg.length && Math.max(...comKg.map(p=>p.kg)) > Math.max(0, ...a.filter(p=>p.t<ini && p.kg>0).map(p=>p.kg)) && a.some(p=>p.t<ini && p.kg>0);
+    return { nome: NAMES[k]||k, n: noMes.length, ini: iniKg, fim: fimKg, dif: iniKg!=null && fimKg!=null ? r2(fimKg - iniKg) : null, bateu };
+  }).filter(Boolean).sort((a,b)=>b.n-a.n || (b.dif||0)-(a.dif||0)).slice(0, 18);
+  // peso
+  const pesos = S.body.filter(b=>{ const t = new Date(b.d+'T12:00').getTime(); return t>=ini && t<=fim; });
+  const antesP = S.body.filter(b=>new Date(b.d+'T12:00').getTime() < ini).pop();
+  const pIni = antesP || pesos[0], pFim = pesos[pesos.length-1];
+  const peso = (pIni || pFim) ? { ini: pIni ? pIni.kg : null, fim: pFim ? pFim.kg : (pIni ? pIni.kg : null), dataIni: pIni ? fmtDay(pIni.d) : '', dataFim: pFim ? fmtDay(pFim.d) : '', n: pesos.length,
+    dif: pIni && pFim && pIni!==pFim ? r2(pFim.kg - pIni.kg) : null, meta: METAS.peso!=null ? METAS.peso : null, falta: METAS.peso!=null && (pFim||pIni) ? r2(METAS.peso - (pFim||pIni).kg) : null } : null;
+  // avaliação física mais recente até o fim do mês
+  const avs = S.measures.filter(x=>new Date(x.d+'T12:00').getTime() <= fim).sort((a,b)=>a.d<b.d?-1:1);
+  const av = avs[avs.length-1], avA = avs.length>1 ? avs[avs.length-2] : null;
+  const medidas = av ? (av.items||[]).slice(0, 14).map(it=>{ const a = avA && (avA.items||[]).find(x=>x.k===it.k); const dif = a && a.v!=null && it.v!=null ? r2(it.v - a.v) : null;
+    return { nome: mLabel(it), valor: fmtN(it.v)+' '+mUnit(it), antes: a ? fmtN(a.v)+' '+mUnit(a) : '', dif: dif ? (dif>0?'+':'')+fmtN(dif) : (a ? '=' : '') }; }) : [];
+  // sono e água
+  const st = estatisticas(SONO.noites, metaSono(), chaveDia(ini), chaveDia(fim));
+  const sono = st.n ? { media: durTxt(st.media), n: st.n, metaOk: st.metaOk+' de '+st.n, meta: durTxt(metaSono()), despertares: st.despertares } : null;
+  const ag = Object.entries(AGUA.dias).filter(([dk,v])=>v>0 && dk>=chaveDia(ini) && dk<=chaveDia(fim));
+  const agua = ag.length ? { media: litros(ag.reduce((n,[,v])=>n+v,0)/ag.length)+' L', n: ag.length, ok: ag.filter(([dk,v])=>v>=metaAguaDe(dk)).length+' de '+ag.length, meta: litros(metaAguaDe(chaveDia(fim)))+' L' } : null;
+  // esforço e dor
+  const comE = forca.filter(s=>s.esforco); const em = comE.length ? comE.reduce((n,s)=>n+s.esforco,0)/comE.length : null;
+  const dores = [...new Set(forca.flatMap(s=>s.dor||[]))].map(k=>(DORES.find(x=>x[0]===k)||[k,k])[1].toLowerCase());
+  return {
+    ano, mes, mesNome: MESES_PT[mes], nome: NOME || EMAIL.split('@')[0], periodo: `${pad(1)}/${pad(mes+1)} a ${pad(new Date(fim).getDate())}/${pad(mes+1)}/${ano}`,
+    geradoEm: new Date().toLocaleDateString('pt-BR'), fichas: FICHA ? [FICHA.nome].concat(EXTRAS.map(f=>f.nome+' (usada junto)')) : [],
+    treinos: forca.length, cardio: doMes.length - forca.length, dias: new Set(doMes.map(s=>chaveDia(s.start))).size, series: forca.reduce((n,s)=>n+(s.done||0),0),
+    tempo: tempoS >= 3600 ? Math.floor(tempoS/3600)+'h'+pad(Math.round(tempoS%3600/60)) : Math.round(tempoS/60)+' min',
+    ant: antF.length ? { treinos: antF.length, series: antF.reduce((n,s)=>n+(s.done||0),0) } : null,
+    semanas, metaSemana, porTreino: Object.values(porT).sort((a,b)=>b.n-a.n).map(t=>Object.assign(t, { ultima: fmtDay(chaveDia(t.ultima)) })),
+    esforco: em ? (ESFORCO[Math.round(em)-1][2]+' ('+fmtN(em,1)+' de 5)') : '', dores,
+    cargas, recordes: cargas.filter(c=>c.bateu).length, peso, medidas, avalData: av ? fmtDay(av.d) : '', avalAnt: avA ? fmtDay(avA.d) : '',
+    sono, agua, fotos: [], fotosDoMes: S.photos.filter(f=>{ const t = new Date(f.d+'T12:00').getTime(); return t>=ini && t<=fim; }),
+  };
+}
+async function fotoParaPdf(url){
+  const img = new Image(); img.crossOrigin = 'anonymous';
+  await new Promise((ok, falha)=>{ img.onload = ok; img.onerror = falha; img.src = url; });
+  const esc = Math.min(1, 900 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+  c.width = Math.round(img.width*esc); c.height = Math.round(img.height*esc);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.8);
+}
+function relatorioSheet(){
+  const h = new Date(), op = [[h.getFullYear(), h.getMonth()], [new Date(h.getFullYear(), h.getMonth()-1, 1).getFullYear(), new Date(h.getFullYear(), h.getMonth()-1, 1).getMonth()]];
+  S.relMes = S.relMes || op[0].join('-');
+  openSheet(`<h2>📄 Relatório do mês</h2><p>Um PDF com treinos, cargas, peso, medidas, sono, água e fotos do mês, para mandar ao personal ou ao nutricionista.</p>
+    <div class="seg two" role="tablist">${op.map(([a,mm])=>`<button role="tab" aria-selected="${S.relMes===a+'-'+mm}" data-a="rel-mes" data-v="${a}-${mm}">${MESES_PT[mm]}${a!==h.getFullYear()?' '+a:''}</button>`).join('')}</div>
+    <div class="btns" style="margin-top:14px"><button class="btn primary" data-a="rel-gerar">Gerar PDF</button><button class="btn ghost" data-a="close">Cancelar</button></div>
+    <p class="note" id="rel-st"></p>`);
+}
+let RELATORIO = null;
+async function gerarRelatorioPdf(){
+  const [ano, mes] = S.relMes.split('-').map(Number), st = $('#rel-st'), b = document.querySelector('[data-a=rel-gerar]');
+  if(b){ b.disabled = true; b.textContent = 'Gerando…'; }
+  try{
+    const d = dadosRelatorio(ano, mes);
+    // fotos: a primeira e a última de frente do mês (ou de qualquer pose)
+    const fs = d.fotosDoMes.slice().sort((a,b)=>a.d<b.d?-1:1), frente = fs.filter(f=>f.pose==='frente'), base = frente.length ? frente : fs;
+    const escolha = base.length > 1 ? [base[0], base[base.length-1]] : base.slice(0,1);
+    if(escolha.length){
+      try{ const urls = await D.urlsDasFotos(escolha.map(f=>f.path));
+        for(const f of escolha) if(urls[f.path]) d.fotos.push({ dataUrl: await fotoParaPdf(urls[f.path]), rotulo: fmtDay(f.d)+' · '+(POSES.find(p=>p[0]===f.pose)||[0,f.pose])[1] }); }
+      catch(e){ /* sem internet: o relatório sai sem as fotos */ }
+    }
+    const { gerarRelatorio } = await import('./relatorio.js');
+    const blob = await gerarRelatorio(d);
+    const nome = `relatorio-${MESES_PT[mes].toLowerCase()}-${ano}.pdf`.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    RELATORIO = { blob, nome, url: URL.createObjectURL(blob) };
+    openSheet(`<h2>📄 Relatório pronto</h2><p>${esc(MESES_PT[mes])} de ${ano} · ${d.treinos} ${d.treinos===1?'treino':'treinos'}, ${d.cargas.length} exercícios${d.fotos.length?', '+d.fotos.length+' foto'+(d.fotos.length>1?'s':''):''}.</p>
+      <div class="btns">${navigator.canShare && navigator.canShare({ files:[new File([blob], nome, {type:'application/pdf'})] }) ? '<button class="btn primary" data-a="rel-share">Enviar (WhatsApp, e-mail…)</button>' : ''}
+      <a class="btn${navigator.canShare?'':' primary'}" href="${RELATORIO.url}" download="${esc(nome)}">Baixar PDF</a><a class="btn ghost" href="${RELATORIO.url}" target="_blank" rel="noopener">Abrir</a></div>`);
+  }catch(e){
+    console.error(e); if(st) st.textContent = 'Não consegui gerar o relatório agora. Confira a internet e tente de novo.';
+    if(b){ b.disabled = false; b.textContent = 'Gerar PDF'; }
+  }
+}
+async function compartilharRelatorio(){
+  if(!RELATORIO) return;
+  try{ await navigator.share({ files:[new File([RELATORIO.blob], RELATORIO.nome, {type:'application/pdf'})], title:'Relatório do mês' }); }
+  catch(e){ if(e && e.name !== 'AbortError') toast('Não consegui abrir o compartilhamento. Use "Baixar PDF".', true); }
 }
 
 /* ----- Card "Minha evolução" ----- */
@@ -3665,6 +3765,10 @@ document.addEventListener('click', async e=>{
     case 'go': if(t.id==='nav-evolucao' && S.evoTab==='conquistas') S.evoTab = 'resumo'; if(t.id==='nav-treinos' && S.view==='treinos') S.trTab = 'ficha'; go(t.dataset.v); break;
     case 'go-close': closeSheet(true); go(t.dataset.v); break;
     case 'evo-cmp': S.evoCmp = t.dataset.v; render(); break;
+    case 'relatorio': closeSheet(true); relatorioSheet(); break;
+    case 'rel-mes': S.relMes = t.dataset.v; relatorioSheet(); break;
+    case 'rel-gerar': gerarRelatorioPdf(); break;
+    case 'rel-share': compartilharRelatorio(); break;
     case 'evo-mm': S.evoMm = t.dataset.v; render(); break;
     case 'evo-recs': recordesSheet(); break;
     case 'ex-filtro': S.exFiltro = t.dataset.v; render(); break;

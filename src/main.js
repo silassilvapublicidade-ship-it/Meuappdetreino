@@ -278,7 +278,7 @@ function newDraft(L, F){
   return { planId:F.id, letter:L, w:copia(W), start:Date.now(), at:Date.now(), lastSetAt:0, notes:'',
     ex: W.ex.map(e=>({ sets: Array.from({length:e.s}, ()=>novaSerie(e)) })) };
 }
-function countDone(d){ let sets=0,total=0; d.ex.forEach(e=>e.sets.forEach(s=>{ total++; if(s.done) sets++; })); return {sets,total}; }
+function countDone(d){ let sets=0,total=0; if(!d || !d.ex) return {sets,total}; d.ex.forEach(e=>e.sets.forEach(s=>{ total++; if(s.done) sets++; })); return {sets,total}; }
 // Última vez: prefere a mesma ficha e o mesmo treino; senão, o mesmo exercício em outro treino.
 function lastEx(key, before, letter, planId){
   let other = null;
@@ -375,7 +375,7 @@ function render(){
   else if(v.indexOf('treino:')===0){ const [L, id] = v.slice(7).split('@'); html = vTreino(L, id); }
   else if(v==='historico'){ S.view = 'treinos'; S.trTab = 'historico'; html = comAbasTreinos(vHistorico()); }
   else if(v==='evolucao') html = vEvolucao();
-  else if(v==='sessao') html = vSessao();
+  else if(v==='sessao'){ if(S.draft && S.draft.w && S.draft.ex) html = vSessao(); else { S.view = 'hoje'; html = vHoje(); } }
   else if(v==='admin') html = ADMIN ? vAdmin() : vHoje();
   // campos marcados com data-manter sobrevivem a um render (ex.: aviso sendo digitado enquanto a lista carrega)
   const manter = [...document.querySelectorAll('#app [data-manter]')].map(el=>[el.id, el.type==='checkbox' ? el.checked : el.value, document.activeElement===el]);
@@ -3210,7 +3210,9 @@ function avisoSemanaLeve(){
   return `<div class="aviso n-alerta sn-tr" role="note"><span class="av-i" aria-hidden="true">🥵</span><p><b>Seus últimos 3 treinos foram muito pesados.</b> Que tal uma semana mais leve (cerca de 10% menos carga) para o corpo recuperar e voltar mais forte?</p></div>`;
 }
 function finishPrompt(){
-  const d = S.draft; const c = countDone(d);
+  const d = S.draft;
+  if(!d || !d.ex){ closeSheet(true); if(S.view==='sessao') go('hoje'); toast('Esse treino já foi finalizado.'); return; }
+  const c = countDone(d);
   if(!c.sets){
     openSheet(`<h2>Nenhuma série marcada</h2><p>Marque as séries que você fez com o botão ✓ ou descarte o treino.</p>
       <div class="btns"><button class="btn primary" data-a="close">Voltar ao treino</button></div>`); return;

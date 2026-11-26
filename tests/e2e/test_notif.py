@@ -35,8 +35,8 @@ async def main():
         # lembretes do calendário tem atalho para notificações
         await pg.click('#sheet [data-a=close]') if await pg.locator('#sheet [data-a=close]').count() else None
         await pg.wait_for_timeout(300)
-        await pg.click('.avatar'); await pg.click('#sheet [data-a=lembretes]'); await pg.wait_for_timeout(300)
-        print('atalho em lembretes:', await pg.locator('#sheet [data-a=notif]').count())
+        await pg.click('.avatar'); await pg.wait_for_timeout(300)
+        print('notificações no perfil:', await pg.locator('#sheet [data-a=notif]').count())
         print('ERROS:', [e for e in errs if 'status of 400' not in e])
         await b.close()
 asyncio.run(main())

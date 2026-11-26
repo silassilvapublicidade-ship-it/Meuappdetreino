@@ -73,17 +73,10 @@ async def main():
         print('conquistadas:', [await x.text_content() for x in await pg.query_selector_all('.badge.on b')])
         await pg.screenshot(path=SH + 'n5-conquistas.png', full_page=True)
 
-        # lembretes
-        await pg.click('#nav-hoje'); await pg.click('.avatar'); await pg.click('#sheet [data-a=lembretes]')
-        await pg.fill('#lem-h', '06:30'); await pg.select_option('#lem-a', '30')
-        await pg.screenshot(path=SH + 'n6-lembretes.png')
-        async with pg.expect_download() as dl:
-            await pg.click('[data-a=lem-go]')
-        d = await dl.value
-        ics = open(await d.path(), encoding='utf-8', newline='').read()
-        print('ics eventos:', ics.count('BEGIN:VEVENT'), '| RRULEs:', re.findall(r'BYDAY=(\w+)', ics), '| DTSTART ex:', re.findall(r'DTSTART:(\S+)', ics)[:1], '| trigger:', re.findall(r'TRIGGER:(\S+)', ics)[:1], '| CRLF:', '\r\n' in ics)
-        open(SH + 'lembretes.ics', 'w').write(ics)
-        await pg.click('[data-a=close]')
+        # lembretes no calendário foram removidos (a notificação do app faz isso)
+        await pg.click('#nav-hoje'); await pg.click('.avatar')
+        print('sem calendário:', await pg.locator('#sheet [data-a=lembretes]').count() == 0)
+        await pg.click('#sheet [data-a=close]')
 
         # grupo: criar
         await pg.click('.avatar'); await pg.click('#sheet [data-a=grupo]'); await pg.wait_for_selector('#g-nome')

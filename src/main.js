@@ -852,7 +852,6 @@ function checarRecorde(i, si){
 function topSet(e){ let b = null; e.sets.forEach(st=>{ const p = st.p[0]||{}; const kg = num(p.kg)||0, r = num(p.r)||0; if(!b || kg>b.kg || (kg===b.kg && r>b.r)) b = {kg, r}; }); return b; }
 function resumoTreinoSheet(s, prs, extra, selo){
   const ant = S.sessions.find(x=>x.id!==s.id && x.letter===s.letter && x.start<s.start && !ehCardio(x));
-  const dv = ant && ant.vol ? Math.round((s.vol-ant.vol)/ant.vol*100) : null;
   const dm = ant ? mins(s.dur) - mins(ant.dur) : null;
   const seq = minhaSequencia();
   const linhas = s.ex.map(e=>{
@@ -870,7 +869,7 @@ function resumoTreinoSheet(s, prs, extra, selo){
       <h2>Treino ${esc(s.letter)} concluído!</h2><p>${esc(s.wname||'')}</p></div>
     <div class="sum"><div class="tile"><div class="k">Tempo</div><div class="v">${mins(s.dur)}<small> min</small></div>${dm!=null&&dm!==0?`<div class="dlt">${dm>0?'+':''}${dm} min</div>`:''}</div>
       <div class="tile"><div class="k">Séries</div><div class="v">${s.done}<small>/${s.total}</small></div></div>
-      <div class="tile"><div class="k">Volume</div><div class="v">${fmtInt(s.vol)}<small> kg</small></div>${dv!=null?`<div class="dlt ${dv>=0?'up':'dn'}">${dv>=0?'▲':'▼'} ${Math.abs(dv)}%</div>`:''}</div></div>
+      <div class="tile"><div class="k">Exercícios</div><div class="v">${(s.ex||[]).length}</div></div></div>
     ${ant?`<p class="note" style="margin:6px 0 0">Comparado com o Treino ${esc(s.letter)} de ${fmtDate(ant.start)}.</p>`:''}
     ${recs?`<ul class="prs rs-prs">${recs}</ul>`:''}
     <div class="rs-strip"><button class="rs-b" data-a="seq"><span aria-hidden="true">🔥</span><b>${seq.n}</b><small>${seq.n===1?'dia seguido':'dias seguidos'}</small></button>
@@ -2779,7 +2778,7 @@ function dadosEvolucao(){
   }).filter(Boolean).sort((a,b)=>(b.para-b.de)/b.de - (a.para-a.de)/a.de);
   const B = S.body, lb = B[B.length-1], p30 = lb ? B.filter(b=>new Date(b.d+'T12:00').getTime() <= agora - 30*864e5).pop() : null;
   return { mes: d.getMonth(), ano: d.getFullYear(), data: agora, indice: atual, dIndice: atual!=null && antes ? Math.round((atual/antes - 1)*1000)/10 : null,
-    treinos: forca.length, cardio: doMes.length - forca.length, ton: forca.reduce((n,s)=>n+(Number(s.vol)||0),0)/1000, recordes: subiu.length,
+    treinos: forca.length, cardio: doMes.length - forca.length, series: forca.reduce((n,s)=>n+(s.done||0),0), recordes: subiu.length,
     subiu: subiu.slice(0,3), peso: lb && p30 && p30!==lb ? r2(lb.kg - p30.kg) : null, nome: NOME || EMAIL.split('@')[0], insta: INSTA };
 }
 
@@ -3185,7 +3184,7 @@ function finishPrompt(){
   openSheet(`<h2>Finalizar Treino ${esc(d.letter)}?</h2><p>${c.sets} de ${c.total} séries feitas.${c.sets<c.total?' As séries não marcadas não entram no registro.':''}</p>
     <div class="sum"><div class="tile"><div class="k">Tempo</div><div class="v">${mins(s.dur)}<small> min</small></div></div>
     <div class="tile"><div class="k">Séries</div><div class="v">${c.sets}<small>/${c.total}</small></div></div>
-    <div class="tile"><div class="k">Volume</div><div class="v">${fmtInt(s.vol)}<small> kg</small></div></div></div>
+    <div class="tile"><div class="k">Exercícios</div><div class="v">${(s.ex||[]).length}</div></div></div>
     ${prs.length?`<ul class="prs">${prs.map(p=>`<li>Recorde: ${esc(p)}</li>`).join('')}</ul>`:''}
     <div id="fin-como">${blocoComoFoi()}</div>
     <div class="btns"><button class="btn primary" data-a="save">Salvar treino</button><button class="btn ghost" data-a="close">Continuar treinando</button></div>`);
@@ -3258,7 +3257,7 @@ function histDetail(id){
   openSheet(`<h2>Treino ${esc(s.letter)} · ${esc(s.wname)}</h2><p style="text-transform:capitalize">${esc(fmtDate(s.start))}, ${hhmm(s.start)}</p>
     <div class="sum"><div class="tile"><div class="k">Tempo</div><div class="v">${mins(s.dur)}<small> min</small></div></div>
     <div class="tile"><div class="k">Séries</div><div class="v">${s.done}<small>/${s.total}</small></div></div>
-    <div class="tile"><div class="k">Volume</div><div class="v">${fmtInt(s.vol)}<small> kg</small></div></div></div>
+    <div class="tile"><div class="k">Exercícios</div><div class="v">${(s.ex||[]).length}</div></div></div>
     ${s.esforco || (s.dor||[]).length ? `<div class="dex"><b>Como foi</b><div>${s.esforco ? ESFORCO[s.esforco-1][1]+' '+ESFORCO[s.esforco-1][2] : ''}${s.esforco && (s.dor||[]).length ? ' · ' : ''}${(s.dor||[]).length ? 'Dor: '+s.dor.map(k=>(DORES.find(x=>x[0]===k)||[k,k])[1].toLowerCase()).join(', ') : ''}</div></div>` : ''}
     ${ex}${s.notes?`<div class="dex"><b>Observações</b><div>${esc(s.notes)}</div></div>`:''}
     <div class="btns" style="margin-top:14px"><button class="btn primary" data-a="share" data-t="semana" data-id="${esc(s.id)}">${ICON.share} Compartilhar imagem</button>
@@ -3275,7 +3274,7 @@ function summaryText(s){
     const t = parts.length===1 ? e.sets.map(st=>setTxt(st,0)).join(', ') : parts.map((n,pi)=>n+' '+e.sets.map(st=>setTxt(st,pi)).join(', ')).join(' | ');
     lines.push((i+1)+'. '+e.n+': '+t);
   });
-  lines.push('Volume: '+fmtInt(s.vol)+' kg · '+s.done+'/'+s.total+' séries');
+  lines.push(s.done+'/'+s.total+' séries');
   if(s.notes) lines.push('Obs.: '+s.notes);
   return lines.join('\n');
 }
@@ -3542,7 +3541,7 @@ const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho',
 function dadosRetrospectiva(ano){
   const doAno = S.sessions.filter(s=>new Date(s.start).getFullYear()===ano);
   const dias = new Set(doAno.map(s=>chaveDia(s.start)));
-  const seg = doAno.reduce((n,s)=>n+(s.dur||0),0), vol = doAno.reduce((n,s)=>n+(s.vol||0),0);
+  const seg = doAno.reduce((n,s)=>n+(s.dur||0),0);
   // melhor sequência de semanas ativas no ano
   const porSemana = new Map(); [...dias].forEach(dk=>{ const w = startOfWeek(new Date(dk+'T12:00').getTime()); porSemana.set(w, (porSemana.get(w)||0)+1); });
   const ativas = [...porSemana.entries()].filter(([w,n])=>n>=3).map(([w])=>w).sort((a,b)=>a-b);
@@ -3560,7 +3559,7 @@ function dadosRetrospectiva(ano){
   const porMes = {}; [...dias].forEach(dk=>{ const m = +dk.slice(5,7)-1; porMes[m] = (porMes[m]||0)+1; });
   const mm = Object.keys(porMes).sort((a,b)=>porMes[b]-porMes[a])[0];
   const conq = minhasConquistas().filter(c=>c.at && new Date(c.at).getFullYear()===ano).length;
-  return { ano, treinos: doAno.length, dias: dias.size, horas: fmtN(seg/3600, seg<36000?1:0), toneladas: fmtN(vol/1000, vol<10000?1:0), seq,
+  return { ano, treinos: doAno.length, dias: dias.size, horas: fmtN(seg/3600, seg<36000?1:0), series: doAno.reduce((n,s)=>n+(s.done||0),0), seq,
     favorito: fk ? { nome: N[fk]||fk, vezes: cont[fk] } : null, evolucao: ek ? { nome: N[ek]||ek, kg: r2(melhor[ek]-prim[ek]) } : null,
     mes: mm!=null ? { nome: MESES_PT[mm], dias: porMes[mm] } : null, conquistas: conq, cardio: doAno.filter(ehCardio).length,
     data: Date.now(), nome: NOME || EMAIL.split('@')[0], insta: INSTA };
@@ -3570,7 +3569,7 @@ function cardRetro(){
   const d = new Date(), ano = anoRetro();
   if(!((d.getMonth()===11 && d.getDate()>=10) || (d.getMonth()===0 && d.getDate()<=15))) return '';
   if(!S.sessions.some(s=>new Date(s.start).getFullYear()===ano) || LS.get('mt.retro.'+ano, false)) return '';
-  return `<div class="aviso n-festa" role="status"><span class="av-i" aria-hidden="true">🎉</span><p><b>Sua retrospectiva ${ano} está pronta!</b> Treinos, horas, toneladas e destaques do ano.<br><button class="btn sm primary" data-a="share-retro" style="margin-top:8px;width:auto">Ver retrospectiva</button></p><button class="x" data-a="retro-x" aria-label="Fechar">×</button></div>`;
+  return `<div class="aviso n-festa" role="status"><span class="av-i" aria-hidden="true">🎉</span><p><b>Sua retrospectiva ${ano} está pronta!</b> Treinos, horas, séries e destaques do ano.<br><button class="btn sm primary" data-a="share-retro" style="margin-top:8px;width:auto">Ver retrospectiva</button></p><button class="x" data-a="retro-x" aria-label="Fechar">×</button></div>`;
 }
 function conquistaNivel(nv){ return { nivel:true, ico:'⭐', nome:'Nível '+nv.nome, desc: nv.n+' treinos'+(nv.prox?' · próximo: '+nv.prox.nome+' ('+nv.prox.n+')':''), at: Date.now(), nv }; }
 function dadosConquista(c){
@@ -3584,7 +3583,7 @@ function dadosSemana(ref){
   const doSemana = S.sessions.filter(s=>s.start>=wk && s.start<fim);
   const dias = SEMANA.map((wd,i)=>({ label:WD[wd][0], feito: doSemana.some(s=>sameDay(s.start, wk+i*864e5)), futuro: wk+i*864e5 > Date.now(), hoje: sameDay(wk+i*864e5, Date.now()) }));
   return { ref, data: ref ? ref.start : Date.now(), dias, nDias: dias.filter(d=>d.feito).length,
-    tempoSemana: doSemana.reduce((n,s)=>n+(s.dur||0),0), treinosSemana: doSemana.length, volSemana: doSemana.reduce((n,s)=>n+(s.vol||0),0), nome: NOME || EMAIL.split('@')[0], insta: INSTA };
+    tempoSemana: doSemana.reduce((n,s)=>n+(s.dur||0),0), treinosSemana: doSemana.length, seriesSemana: doSemana.reduce((n,s)=>n+(s.done||0),0), nome: NOME || EMAIL.split('@')[0], insta: INSTA };
 }
 function dadosMes(ref){
   const base = new Date(ref ? ref.start : Date.now());

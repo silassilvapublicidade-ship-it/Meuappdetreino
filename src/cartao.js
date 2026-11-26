@@ -286,8 +286,8 @@ export async function desenharSemana(d){
   } else stats(x, cardio
     ? [[tempoTxt(s.dur), 'TEMPO'], [cd.km ? String(cd.km).replace('.',',')+' km' : '—', 'DISTÂNCIA'], [cd.kcal ? Math.round(cd.kcal)+' kcal' : '—', 'CALORIAS']]
     : s
-    ? [[tempoTxt(s.dur), 'TEMPO'], [s.done+'/'+s.total, 'SÉRIES'], [Math.floor(s.vol||0).toLocaleString('pt-BR')+' kg', 'VOLUME']]
-    : [[String(d.treinosSemana), d.treinosSemana===1?'TREINO':'TREINOS'], [tempoTxt(d.tempoSemana), 'TEMPO'], [Math.floor(d.volSemana||0).toLocaleString('pt-BR')+' kg', 'VOLUME']], 790);
+    ? [[tempoTxt(s.dur), 'TEMPO'], [s.done+'/'+s.total, 'SÉRIES'], [String((s.ex||[]).length), (s.ex||[]).length===1?'EXERCÍCIO':'EXERCÍCIOS']]
+    : [[String(d.treinosSemana), d.treinosSemana===1?'TREINO':'TREINOS'], [tempoTxt(d.tempoSemana), 'TEMPO'], [String(d.seriesSemana||0), 'SÉRIES']], 790);
   if(d.conquista) selo(x, d.conquista, 1008);
   rotulo(x, 'SEMANA', d.conquista ? 1104 : 1090, COR.cyan);
   semana(x, d.dias, 1180);
@@ -438,7 +438,7 @@ export async function desenharRetrospectiva(d){
   const wn = x.measureText(String(d.treinos)).width;
   x.font = `400 70px ${DISPLAY}`; x.fillStyle = COR.ink; x.fillText(d.treinos===1?'TREINO':'TREINOS', 72+wn+30, 790);
   x.fillStyle = COR.muted; x.fillText(d.dias+' DIAS NA ACADEMIA', 72+wn+30, 858);
-  stats(x, [[d.horas, 'HORAS'], [d.toneladas, 'TONELADAS'], [d.seq+' sem', 'SEQUÊNCIA']], 920);
+  stats(x, [[d.horas, 'HORAS'], [String(d.series||0), 'SÉRIES'], [d.seq+' sem', 'SEQUÊNCIA']], 920);
   // destaques
   const linhas = [
     ['EXERCÍCIO FAVORITO', d.favorito ? d.favorito.nome+' · '+d.favorito.vezes+'x' : '—'],
@@ -468,8 +468,7 @@ export async function desenharEvolucao(d){
   const sub = d.dIndice != null ? (d.dIndice >= 0 ? '+' : '') + String(d.dIndice).replace('.', ',') + '% EM 30 DIAS' : d.indice != null ? 'ÍNDICE ' + String(d.indice).replace('.', ',') : 'NO FOCO';
   let fs = 120; x.font = `400 ${fs}px ${DISPLAY}`; while(x.measureText(sub).width > W-160 && fs > 70){ fs -= 6; x.font = `400 ${fs}px ${DISPLAY}`; }
   x.save(); x.shadowColor = 'rgba(67,227,173,.5)'; x.shadowBlur = 30; x.fillStyle = gradTxt(x, 630, 740); x.fillText(sub, 76, 732); x.restore();
-  const ton = d.ton >= 10 ? Math.round(d.ton) : Math.round(d.ton*10)/10;
-  stats(x, [[String(d.treinos), d.treinos===1?'TREINO NO MÊS':'TREINOS NO MÊS'], [String(ton).replace('.', ',')+' t', 'LEVANTADAS'], [String(d.recordes), d.recordes===1?'RECORDE':'RECORDES']], 790);
+  stats(x, [[String(d.treinos), d.treinos===1?'TREINO NO MÊS':'TREINOS NO MÊS'], [String(d.series||0), 'SÉRIES'], [String(d.recordes), d.recordes===1?'RECORDE':'RECORDES']], 790);
   rotulo(x, d.subiu.length ? 'O QUE MAIS SUBIU' : 'CONSTÂNCIA', 1090, COR.cyan);
   if(d.subiu.length){
     d.subiu.forEach((s, i)=>{

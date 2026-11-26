@@ -276,9 +276,6 @@ function inicioSemanaISO() {
   const seg = new Date(Date.UTC(y, m - 1, d - volta, 3, 0, 0)); // 00:00 em Brasília = 03:00 UTC
   return seg.toISOString();
 }
-function toneladas(kg: number) {
-  return (kg / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: kg >= 10000 ? 0 : 1 });
-}
 function horasTxt(seg: number) {
   const m = Math.round(seg / 60), h = Math.floor(m / 60), r = m % 60;
   return h ? `${h}h${String(r).padStart(2, "0")}` : `${m} min`;
@@ -300,7 +297,7 @@ async function resumo(previa?: Msg[]) {
   const ini = inicioSemanaISO();
   let enviados = 0;
   for (const uid of usuarios) {
-    const { data: todas } = await sb.from("sessions").select("letter,started_at,dur_s,vol,ex").eq("user_id", uid).order("started_at", { ascending: true }).limit(2000);
+    const { data: todas } = await sb.from("sessions").select("letter,started_at,dur_s,vol,ex,sets_done").eq("user_id", uid).order("started_at", { ascending: true }).limit(2000);
     const lista = todas || [];
     const semana = lista.filter((s) => s.started_at >= ini);
     const treinos = semana.filter((s) => s.letter !== "CARDIO");
@@ -313,10 +310,10 @@ async function resumo(previa?: Msg[]) {
       const antes = maximos(lista.filter((s) => s.started_at < ini));
       const agora = maximos(treinos);
       const recordes = Object.keys(agora).filter((k) => antes[k] != null && agora[k] > antes[k]).length;
-      const vol = treinos.reduce((n, s) => n + (Number(s.vol) || 0), 0);
+      const series = treinos.reduce((n, s) => n + (Number(s.sets_done) || 0), 0);
       const tempo = semana.reduce((n, s) => n + (Number(s.dur_s) || 0), 0);
       const partes = [
-        vol ? `${toneladas(vol)} t levantadas` : "",
+        series ? `${series} séries` : "",
         tempo ? `${horasTxt(tempo)} de treino` : "",
         recordes ? `${recordes} ${recordes > 1 ? "recordes" : "recorde"}` : "",
         cardios ? `${cardios} cardio${cardios > 1 ? "s" : ""}` : "",

@@ -60,8 +60,6 @@ const POOL = [
   { id:'cardio',   ico:'🏃', txt:()=>'Faça 2 cardios',                     alvo:()=>2, prog:c=>c.cardios },
   { id:'completo', ico:'✅', txt:()=>'Complete todas as séries em 2 treinos', alvo:()=>2, prog:c=>c.completos },
   { id:'agua',     ico:'💧', txt:()=>'Bata a meta de água em 4 dias',      alvo:()=>4, prog:c=>c.aguaDias },
-  { id:'volume',   ico:'📈', txt:c=>c.volumeAntes ? 'Levante mais peso total que na semana passada' : 'Levante 5 toneladas na semana',
-    alvo:c=>c.volumeAntes ? Math.round(c.volumeAntes/1000*10)/10 + 0.1 : 5, prog:c=>Math.round(c.volume/100)/10, un:'t' },
   { id:'sono',     ico:'🌙', txt:()=>'Durma 7 horas ou mais em 4 noites', alvo:()=>4, prog:c=>c.sonoBom||0, desde:'2026-11-23' },
   { id:'reagir',   ico:'👏', txt:()=>'Reaja ao treino de 3 pessoas do grupo', alvo:()=>3, prog:c=>c.reacoes, grupo:true },
   { id:'sabado',   ico:'👨‍👩‍👦', txt:()=>'Treine no sábado com a família',   alvo:()=>1, prog:c=>c.sabado ? 1 : 0, grupo:true },

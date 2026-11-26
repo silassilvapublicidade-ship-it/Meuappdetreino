@@ -30,7 +30,7 @@ async def main():
         print('outro treino tem seção da extra:', txt(await pg.text_content('.tt-ficha')))
         await pg.click(f'#sheet-card [data-a=start][data-p="{extra["id"]}"] >> nth=0'); await pg.wait_for_selector('#set-0-0')
         print('sessão:', txt(await pg.text_content('.shead .st b')))
-        await pg.fill('#w-0-0-0', '30'); await pg.fill('#r-0-0-0', '10'); await pg.click('#set-0-0 .chk')
+        await pg.fill('#w-0-0-0', '30'); await pg.click('#set-0-0 .chk')
         await pg.click('[data-a=rest-skip]') if await pg.query_selector('[data-a=rest-skip]') else None
         # esquecido: a última atividade foi há 1 hora
         await pg.evaluate("""()=>{ const k = Object.keys(localStorage).find(k=>k.startsWith('mt.draft.')); const d = JSON.parse(localStorage.getItem(k)); const h = Date.now()-3600e3; d.start = h-600e3; d.at = h; d.lastSetAt = h; localStorage.setItem(k, JSON.stringify(d)); }""")

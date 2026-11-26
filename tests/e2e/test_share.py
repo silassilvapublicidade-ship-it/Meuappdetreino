@@ -26,7 +26,7 @@ async def main():
         await pg.reload(); await pg.wait_for_selector('.hero')
         await pg.click('[data-a=start]'); await pg.wait_for_selector('#set-0-0')
         for si in range(len(await pg.query_selector_all('input[id^="w-0-"][id$="-0"]'))):
-            await pg.fill(f'#w-0-{si}-0','32'); await pg.fill(f'#r-0-{si}-0','10'); await pg.click(f'#set-0-{si} .chk')
+            await pg.fill(f'#w-0-{si}-0','32'); await pg.click(f'#set-0-{si} .chk')
         await pg.click('[data-a=rest-skip]'); await pg.click('[data-a=finish]'); await pg.click('[data-a=save]'); await pg.wait_for_selector('[data-a=rs-share]', timeout=10000); await pg.click('[data-a=rs-share]')
         await pg.wait_for_selector('#cardprev img', timeout=10000)
         await pg.screenshot(path=SHOTS+'sh1.png')

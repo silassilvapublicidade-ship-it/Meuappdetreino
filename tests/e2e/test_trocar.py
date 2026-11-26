@@ -22,7 +22,7 @@ async def main():
         outra = [l for l in letras if l != txt(await pg.text_content('.tt.tt-sug .tt-l'))][-1]
         await pg.click(f'.tt-b [data-a=start][data-l="{outra}"]'); await pg.wait_for_selector('#set-0-0')
         print('iniciou:', outra, '| sheet escondida:', await pg.is_hidden('#sheet'))
-        await pg.fill('#w-0-0-0', '20'); await pg.fill('#r-0-0-0', '10'); await pg.click('#set-0-0 .chk')
+        await pg.fill('#w-0-0-0', '20'); await pg.click('#set-0-0 .chk')
         await pg.click('[data-a=rest-skip]'); await pg.click('[data-a=finish]'); await pg.click('[data-a=save]')
         await pg.wait_for_selector('.rs-top', timeout=8000); await pg.click('#sheet [data-a=close]')
         await pg.click('#nav-hoje'); await pg.wait_for_selector('.hero')

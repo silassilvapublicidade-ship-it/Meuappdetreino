@@ -20,7 +20,7 @@ async def main():
         print('perfil:', fake.tables['profiles'])
         await pg.click('[data-a=perfil]'); await pg.wait_for_timeout(500); await pg.screenshot(path=SHOTS+'p1.png'); await pg.click('[data-a=close]')
         await pg.click('#nav-hoje'); await pg.click('[data-a=start]'); await pg.wait_for_selector('#set-0-0')
-        await pg.fill('#w-0-0-0','32'); await pg.fill('#r-0-0-0','10'); await pg.click('#set-0-0 .chk'); await pg.click('[data-a=rest-skip]')
+        await pg.fill('#w-0-0-0','32'); await pg.click('#set-0-0 .chk'); await pg.click('[data-a=rest-skip]')
         await pg.click('[data-a=finish]'); await pg.click('[data-a=save]'); await pg.wait_for_selector('[data-a=rs-share]', timeout=10000); await pg.click('[data-a=rs-share]'); await pg.wait_for_selector('#cardprev img', timeout=10000)
         for nome, tab in [('card-semana-perfil','semana'),('card-mes-perfil','mes')]:
             if tab=='mes': await pg.click('[data-a=share-tab][data-t=mes]'); await pg.wait_for_selector('#cardprev img', timeout=10000)

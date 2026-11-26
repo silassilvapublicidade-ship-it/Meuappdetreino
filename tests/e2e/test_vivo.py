@@ -34,7 +34,7 @@ async def main():
         # Ana termina o 1º exercício
         n = await pg2.locator('#sets-0 .set').count()
         for si in range(n):
-            await pg2.fill(f'#w-0-{si}-0', '20'); await pg2.fill(f'#r-0-{si}-0', '12'); await pg2.click(f'#set-0-{si} .chk')
+            await pg2.fill(f'#w-0-{si}-0', '20'); await pg2.click(f'#set-0-{si} .chk')
         await pg2.wait_for_timeout(2500)
         await pg.wait_for_selector('#vivo-ex-0 .vx.ok', timeout=40000)
         print('marcador no exercício:', await pg.text_content('#vivo-ex-0'))

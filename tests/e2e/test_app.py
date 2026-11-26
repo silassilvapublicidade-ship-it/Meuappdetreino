@@ -47,8 +47,8 @@ async def main():
         print('hero:', (await pg.text_content('.hero-name')))
         await pg.click('[data-a=trocar-treino]'); await pg.click('.tt-b [data-a=start][data-l="A"]'); await pg.wait_for_selector('#set-0-0')
         for si in range(5):
-            await pg.fill(f'#w-0-{si}-0', '40'); await pg.fill(f'#r-0-{si}-0', '12'); await pg.click(f'#set-0-{si} .chk')
-        await pg.fill('#w-1-0-0', '30'); await pg.fill('#r-1-0-0', '15'); await pg.fill('#w-1-0-1', '50'); await pg.fill('#r-1-0-1', '15'); await pg.click('#set-1-0 .chk')
+            await pg.fill(f'#w-0-{si}-0', '40'); await pg.click(f'#set-0-{si} .chk')
+        await pg.fill('#w-1-0-0', '30'); await pg.fill('#w-1-0-1', '50'); await pg.click('#set-1-0 .chk')
         await pg.click('[data-a=rest-skip]')
         await pg.click('[data-a=finish]'); await pg.click('[data-a=save]'); await pg.wait_for_timeout(600)
         print('toast:', await pg.text_content('#toast'))

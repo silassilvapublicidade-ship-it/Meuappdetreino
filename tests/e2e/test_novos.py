@@ -31,7 +31,7 @@ async def treinar(pg, kg='40', reps='12', trocar=None):
         await pg.fill('#swap-n', trocar); await pg.click('[data-a=swap-go]'); await pg.wait_for_timeout(200)
     n = await pg.locator('#sets-0 .set').count()
     for si in range(n):
-        await pg.fill(f'#w-0-{si}-0', kg); await pg.fill(f'#r-0-{si}-0', reps); await pg.click(f'#set-0-{si} .chk')
+        await pg.fill(f'#w-0-{si}-0', kg); await pg.click(f'#set-0-{si} .chk')
     await pg.click('[data-a=rest-skip]')
     await pg.click('[data-a=finish]'); await pg.click('[data-a=save]')
     await pg.wait_for_selector('[data-a=rs-share]', timeout=10000); await pg.click('[data-a=rs-share]')

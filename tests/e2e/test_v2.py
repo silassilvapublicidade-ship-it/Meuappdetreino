@@ -18,6 +18,7 @@ async def main():
         print('menu:', [txt(await x.text_content()) for x in await pg.query_selector_all('nav button')])
         # treino com voz + esforço/dor
         await pg.click('[data-a=start]'); await pg.wait_for_selector('#set-0-0')
+        print('reps fixas:', await pg.input_value('#r-0-0-0'), '| readonly:', await pg.evaluate("document.querySelector('#r-0-0-0').readOnly"), '| carga vazia:', repr(await pg.input_value('#w-0-0-0')))
         print('botão voz:', await pg.query_selector('[data-a=voz][data-ei="0"]') is not None)
         await pg.click('[data-a=voz][data-ei="0"]'); await pg.wait_for_timeout(400)
         print('voz preencheu:', await pg.input_value('#w-0-0-0'), await pg.input_value('#r-0-0-0'), 'feita:', 'done' in (await pg.get_attribute('#set-0-0', 'class')), '|', txt(await pg.text_content('#toast')))

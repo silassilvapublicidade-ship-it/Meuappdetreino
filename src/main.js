@@ -41,6 +41,9 @@ function clock(sec){ sec=Math.max(0,Math.round(sec)); const m=Math.floor(sec/60)
 function elapsed(ms){ const s=Math.floor(ms/1000); const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60; return (h? h+':'+pad(m) : m)+':'+pad(x); }
 function mins(sec){ return Math.max(1, Math.floor((sec||0)/60)); }
 function range(r){ return r[0]===r[1] ? String(r[0]) : r[0]+'–'+r[1]; }
+// repetições ficam fixas na quantidade da ficha (o topo da faixa); só a carga é preenchida
+function repsFicha(e){ const r = e && e.r || []; return String(r[1]!=null ? r[1] : r[0]!=null ? r[0] : ''); }
+const novaSerie = e => ({ done:false, p:e.parts.map(()=>({ kg:'', r:repsFicha(e) })) });
 function restTxt(s){ return s>=120 && s%60===0 ? (s/60)+' min' : s+'s'; }
 function daysAgo(ts){ const a=new Date(); a.setHours(0,0,0,0); const b=new Date(ts); b.setHours(0,0,0,0); return Math.round((a-b)/864e5); }
 function agoTxt(ts){ const d=daysAgo(ts); return d<=0?'hoje':d===1?'ontem':'há '+d+' dias'; }
@@ -273,7 +276,7 @@ function trocarTreinoSheet(){
 function newDraft(L, F){
   F = F || FICHA; const W = F.W[L];
   return { planId:F.id, letter:L, w:copia(W), start:Date.now(), at:Date.now(), lastSetAt:0, notes:'',
-    ex: W.ex.map(e=>({ sets: Array.from({length:e.s}, ()=>({done:false, p:e.parts.map(()=>({kg:'',r:''}))})) })) };
+    ex: W.ex.map(e=>({ sets: Array.from({length:e.s}, ()=>novaSerie(e)) })) };
 }
 function countDone(d){ let sets=0,total=0; d.ex.forEach(e=>e.sets.forEach(s=>{ total++; if(s.done) sets++; })); return {sets,total}; }
 // Última vez: prefere a mesma ficha e o mesmo treino; senão, o mesmo exercício em outro treino.
@@ -309,7 +312,12 @@ function suggest(def, before, letter, planId){
     const below = withR.filter(x=>x.r<rmin).length;
     const bw = top==null || !inc;
     let kind, sets, msg;
-    if(allTop && bw){
+    // repetições fixas pela ficha: a progressão é só pela carga, com sugestão leve
+    const fixas = ls.length && ls.every(x=>x.r===rmax);
+    if(fixas && !bw){
+      kind='peso'; sets=ls.map(x=>({kg:x.kg, r:rmax}));
+      msg = `Última carga: ${fmtN(top)} kg. Se as ${rmax} reps saíram com folga em todas as séries, tente ${fmtN(r2(top+inc))} kg.`;
+    } else if(allTop && bw){
       kind='bwtop'; sets=ls.map(x=>({kg:x.kg, r:rmax}));
       msg = top==null ? `Você fez ${rmax} reps em todas as séries. Deixe mais difícil: pausa no topo, descida mais lenta ou carga extra.`
                       : `Você fez ${rmax} reps em todas as séries com ${fmtN(top)} kg. Aumente a carga se der.`;
@@ -2467,20 +2475,21 @@ async function falarSerie(ei, btn){
   const d = S.draft; if(!d || S.vozOn) return;
   const e = d.w.ex[ei], de = d.ex[ei], si = de.sets.findIndex(s=>!s.done);
   if(si < 0){ toast('Todas as séries deste exercício já estão feitas. Toque em "+ Série extra" se quiser mais uma.'); return; }
-  S.vozOn = true; const txt = btn.innerHTML; btn.classList.add('on'); btn.innerHTML = '🔴 Ouvindo… fale "32 quilos, 10"';
+  S.vozOn = true; const txt = btn.innerHTML; btn.classList.add('on'); btn.innerHTML = '🔴 Ouvindo… fale a carga, ex.: "32 quilos"';
   try{
     const alts = await ouvir();
     let par = null, frase = alts[0] || '';
     for(const a of alts){ const r = interpretar(a, e.parts.length); if(r && r.length){ par = r; frase = a; break; } }
-    if(!par){ toast(`Não entendi "${frase}". Fale o peso e as repetições, por exemplo: 32 quilos, 10.`, true); return; }
+    if(!par){ toast(`Não entendi "${frase}". Fale a carga, por exemplo: 32 quilos.`, true); return; }
     const st = de.sets[si];
+    // as repetições são fixas pela ficha: o número falado é a carga
+    par.forEach(p=>{ if(p.kg==null && p.r!=null) p.kg = p.r; p.r = Number(repsFicha(e)) || null; });
     par.forEach((p,pi)=>{
       if(!st.p[pi]) return;
       if(p.kg!=null){ st.p[pi].kg = String(p.kg); const el = $(`#w-${ei}-${si}-${pi}`); if(el) el.value = fmtN(p.kg).replace('.', ','); }
-      if(p.r!=null){ st.p[pi].r = String(Math.round(p.r)); const el = $(`#r-${ei}-${si}-${pi}`); if(el) el.value = String(Math.round(p.r)); }
     });
     touchDraft();
-    const desc = par.map(p=>`${p.kg!=null?fmtN(p.kg)+' kg':''}${p.kg!=null&&p.r!=null?' × ':''}${p.r!=null?Math.round(p.r)+' reps':''}`).join(' + ');
+    const desc = par.map(p=>`${p.kg!=null?fmtN(p.kg)+' kg':''}${p.kg!=null&&p.r!=null?' × ':''}${p.r!=null?p.r+' reps':''}`).join(' + ');
     toggleSet(ei, si);
     toast(`Série ${si+1}: ${desc} ✓`);
   }catch(err){
@@ -2497,7 +2506,7 @@ function setRow(e, i, st, si, sug){
     const v = st.p[pi] || {kg:'',r:''};
     return `<div class="part">${e.parts.length>1?`<span class="plabel">${esc(pn)}</span>`:''}
       <label class="fld"><input id="w-${i}-${si}-${pi}" data-f="kg" data-ei="${i}" data-si="${si}" data-pi="${pi}" inputmode="decimal" autocomplete="off" placeholder="${esc(phKg||'–')}" data-ph="${esc(phKg)}" value="${esc(v.kg)}" aria-label="${esc(pn)}, série ${si+1}, carga em kg"><span>kg</span></label>
-      <label class="fld"><input id="r-${i}-${si}-${pi}" data-f="r" data-ei="${i}" data-si="${si}" data-pi="${pi}" inputmode="numeric" autocomplete="off" placeholder="${esc(phR||range(e.r))}" data-ph="${esc(phR)}" value="${esc(v.r)}" aria-label="${esc(pn)}, série ${si+1}, repetições"><span>reps</span></label></div>`;
+      <label class="fld fixo"><input id="r-${i}-${si}-${pi}" data-f="r" data-ei="${i}" data-si="${si}" data-pi="${pi}" readonly tabindex="-1" value="${esc(range(e.r))}" aria-label="${esc(pn)}, série ${si+1}: ${esc(range(e.r))} repetições, fixas pela ficha"><span>reps</span></label></div>`;
   }).join('');
   return `<div class="set${st.done?' done':''}" id="set-${i}-${si}">
     <span class="set-n">${si+1}</span><div class="set-parts">${parts}</div>
@@ -3076,10 +3085,7 @@ function toggleSet(i, si){
   if(!st.done){
     e.parts.forEach((pn,pi)=>{
       const p = st.p[pi];
-      ['kg','r'].forEach(f=>{
-        const inp = $('#'+(f==='kg'?'w':'r')+'-'+i+'-'+si+'-'+pi);
-        if(p[f]==='' && inp && inp.dataset.ph){ p[f] = inp.dataset.ph.replace(',','.'); inp.value = inp.dataset.ph; }
-      });
+      if(p.r==='' || p.r==null) p.r = repsFicha(e);
     });
     st.done = true; d.lastSetAt = Date.now();
     try{ checarRecorde(i, si); }catch(err){ console.error('recorde', err); }
@@ -3099,7 +3105,7 @@ function toggleSet(i, si){
 }
 function addSet(i){
   const d = S.draft; const e = d.w.ex[i];
-  d.ex[i].sets.push({done:false, p:e.parts.map(()=>({kg:'',r:''}))});
+  d.ex[i].sets.push(novaSerie(e));
   touchDraft();
   const card = $('#ex-'+i);
   if(card){ const tmp = document.createElement('div'); tmp.innerHTML = exCard(e,i); card.replaceWith(tmp.firstElementChild); }
@@ -3129,14 +3135,14 @@ function swapEx(i, nome){
   if(k===base.key){ undoSwap(i); return; }
   const o = copia(base); delete o.orig;
   d.w.ex[i] = { n:nome, parts:[nome], bi:false, keys:[k], key:k, incs:[chutarAumento(nome)], s:base.s, r:base.r.slice(), rest:base.rest, tip:'', video:'', orig:o };
-  d.ex[i].sets = Array.from({length:base.s}, ()=>({done:false, p:[{kg:'',r:''}]}));
+  d.ex[i].sets = Array.from({length:base.s}, ()=>novaSerie(d.w.ex[i]));
   touchDraft(); closeSheet(true); refreshCard(i); updateProgress();
   toast('Trocado só neste treino.');
 }
 function undoSwap(i){
   const d = S.draft, o = d.w.ex[i].orig; if(!o) return;
   d.w.ex[i] = o;
-  d.ex[i].sets = Array.from({length:o.s}, ()=>({done:false, p:o.parts.map(()=>({kg:'',r:''}))}));
+  d.ex[i].sets = Array.from({length:o.s}, ()=>novaSerie(o));
   touchDraft(); closeSheet(true); refreshCard(i); updateProgress();
   toast('Voltou para '+o.n+'.');
 }

@@ -52,7 +52,7 @@ async def main():
         await pg.screenshot(path=SH+'e3-seq.png'); await pg.click('#sheet [data-a=close]')
         # treino com recorde
         await pg.click('[data-a=trocar-treino]'); await pg.click('.tt-b [data-a=start][data-l="A"]'); await pg.wait_for_selector('#set-0-0')
-        await pg.fill('#w-0-0-0', '45'); await pg.fill('#r-0-0-0', '10'); await pg.click('#set-0-0 .chk')
+        await pg.fill('#w-0-0-0', '45'); await pg.click('#set-0-0 .chk')
         await pg.wait_for_selector('.festa.on', timeout=3000)
         print('festa:', txt(await pg.text_content('.festa')))
         await pg.wait_for_timeout(250); await pg.screenshot(path=SH+'e4-recorde.png')
@@ -60,7 +60,7 @@ async def main():
         await pg.screenshot(path=SH+'e5-timer.png')
         n = await pg.locator('#sets-0 .set').count()
         for si in range(1, n):
-            await pg.fill(f'#w-0-{si}-0', '40'); await pg.fill(f'#r-0-{si}-0', '12'); await pg.click(f'#set-0-{si} .chk')
+            await pg.fill(f'#w-0-{si}-0', '40'); await pg.click(f'#set-0-{si} .chk')
         await pg.click('[data-a=rest-skip]')
         await pg.click('[data-a=finish]'); await pg.click('[data-a=save]')
         await pg.wait_for_selector('.rs-top', timeout=8000); await pg.wait_for_timeout(600)
